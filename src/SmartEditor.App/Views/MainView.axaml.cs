@@ -50,4 +50,18 @@ public partial class MainView : UserControl
             e.Handled = true;
         }
     }
+
+    /// <summary>Switching tabs flips the previously-active tab's title <see cref="TextBox"/> to
+    /// <c>IsReadOnly</c> (see <see cref="TabViewModelBase.IsEditable"/>), but that alone doesn't
+    /// move keyboard focus away from it &mdash; if the user was mid-rename when they clicked
+    /// another tab, the caret kept blinking in the now-read-only box, looking editable when typing
+    /// no longer did anything. Move focus to the TabControl itself on every selection change so
+    /// that never lingers.</summary>
+    private void OnTabControlSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is InputElement tabControl)
+        {
+            tabControl.Focus();
+        }
+    }
 }

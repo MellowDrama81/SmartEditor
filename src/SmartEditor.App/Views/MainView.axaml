@@ -8,25 +8,28 @@
              x:Class="SmartEditor.App.Views.MainView">
 
   <UserControl.Styles>
-    <!-- Distinct, high-contrast tab headers: inactive tabs get a solid gray background that's
-         clearly darker/lighter than the page behind them (SystemChromeLowColor, tried first, turned
-         out nearly indistinguishable from the page's own near-white/near-black background —
-         SystemChromeMediumColor gives real contrast instead), the active tab's background matches
-         the page/content area so it reads as "merged" with what's below it plus a colored accent
-         underline, and hovering an inactive tab darkens it further still — so which tab is current,
-         and which are even there, is unmistakable even with several open at once (default
-         FluentTheme tabs read as fairly flat/subtle once the header content itself gets this
-         custom). -->
+    <!-- Distinct, high-contrast tab headers, all pitched against an explicitly-colored page
+         background (see the root Grid's Background below) rather than each other: the page itself
+         is a mid gray (SystemChromeMediumColor), inactive tabs are a further step darker
+         (SystemChromeHighColor) so they read as tabs sitting on the page even before hovering,
+         hovering one shifts it again (SystemChromeMediumLowColor), and the active tab uses
+         SystemRegionColor — the theme's opposite brightness extreme from the mid-gray page in both
+         light and dark variants — plus a colored accent underline, so it visibly pops off the page
+         rather than blending into it. Every one of these four surfaces (page, inactive, hover,
+         selected) is therefore a genuinely different color, confirmed against Avalonia's actual
+         FluentTheme palette values for both theme variants (an earlier attempt using
+         SystemChromeLowColor for inactive tabs, and matching the active tab to an unset/default
+         page background, turned out nearly indistinguishable in practice). -->
     <Style Selector="TabItem">
       <Setter Property="Padding" Value="12,8" />
       <Setter Property="Margin" Value="0,0,4,0" />
       <Setter Property="CornerRadius" Value="6,6,0,0" />
-      <Setter Property="Background" Value="{DynamicResource SystemChromeMediumColor}" />
+      <Setter Property="Background" Value="{DynamicResource SystemChromeHighColor}" />
       <Setter Property="BorderThickness" Value="0,0,0,3" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
     <Style Selector="TabItem:pointerover">
-      <Setter Property="Background" Value="{DynamicResource SystemChromeHighColor}" />
+      <Setter Property="Background" Value="{DynamicResource SystemChromeMediumLowColor}" />
     </Style>
     <Style Selector="TabItem:selected">
       <Setter Property="Background" Value="{DynamicResource SystemRegionColor}" />
@@ -35,7 +38,7 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid>
+  <Grid Background="{DynamicResource SystemChromeMediumColor}">
     <!-- Main content: header bar + editor tabs -->
     <Grid RowDefinitions="Auto,*" Margin="16">
       <DockPanel Grid.Row="0" Margin="0,0,0,12">
@@ -48,7 +51,12 @@
       <!-- No explicit ContentTemplate: the app-wide ViewLocator (see App.axaml) resolves each
            editor tab's content view by naming convention (EditorViewModel -> EditorView). Assets
            are no longer a tab — they're shown via the overlay below instead. -->
-      <TabControl Grid.Row="1" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}">
+      <!-- Background matches the active TabItem's own (SystemRegionColor) so the tab body reads as
+           a continuation of the selected tab rather than a visually separate panel sitting on the
+           page beneath it. -->
+      <TabControl Grid.Row="1" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
+                  Background="{DynamicResource SystemRegionColor}"
+                  Focusable="True" SelectionChanged="OnTabControlSelectionChanged">
         <TabControl.ItemTemplate>
           <DataTemplate>
             <StackPanel Orientation="Horizontal" Spacing="4" MinWidth="90">
