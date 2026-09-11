@@ -2,119 +2,69 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:controls="using:SmartEditor.App.Controls"
+             xmlns:views="using:SmartEditor.App.Views"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
              x:CompileBindings="False"
              x:Class="SmartEditor.App.Views.MainView">
 
+  <UserControl.Styles>
+    <!-- Distinct, high-contrast tab headers: inactive tabs get a solid gray background that's
+         clearly darker/lighter than the page behind them (SystemChromeLowColor, tried first, turned
+         out nearly indistinguishable from the page's own near-white/near-black background —
+         SystemChromeMediumColor gives real contrast instead), the active tab's background matches
+         the page/content area so it reads as "merged" with what's below it plus a colored accent
+         underline, and hovering an inactive tab darkens it further still — so which tab is current,
+         and which are even there, is unmistakable even with several open at once (default
+         FluentTheme tabs read as fairly flat/subtle once the header content itself gets this
+         custom). -->
+    <Style Selector="TabItem">
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="CornerRadius" Value="6,6,0,0" />
+      <Setter Property="Background" Value="{DynamicResource SystemChromeMediumColor}" />
+      <Setter Property="BorderThickness" Value="0,0,0,3" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="TabItem:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SystemChromeHighColor}" />
+    </Style>
+    <Style Selector="TabItem:selected">
+      <Setter Property="Background" Value="{DynamicResource SystemRegionColor}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+  </UserControl.Styles>
+
   <Grid>
-    <!-- Main editor content -->
+    <!-- Main content: header bar + editor tabs -->
     <Grid RowDefinitions="Auto,*" Margin="16">
       <DockPanel Grid.Row="0" Margin="0,0,0,12">
         <Button Content="Settings" DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" />
+        <Button Content="🗂 Assets" DockPanel.Dock="Right" Margin="0,0,8,0" Command="{Binding OpenAssetsCommand}" />
+        <Button Content="+ New tab" DockPanel.Dock="Right" Margin="0,0,8,0" Command="{Binding AddTabCommand}" />
         <TextBlock Text="SmartEditor" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
       </DockPanel>
 
-      <ScrollViewer Grid.Row="1">
-        <StackPanel Spacing="12" DataContext="{Binding Editor}">
-
-          <TextBlock Text="Source images (0-8)" FontWeight="SemiBold" />
-          <ItemsControl ItemsSource="{Binding Images}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Width="96" Height="96" Margin="4" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
-                  <Grid>
-                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
-                    <Button Content="✕" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="4,0"
-                            Command="{Binding $parent[ItemsControl].DataContext.RemoveImageCommand}"
-                            CommandParameter="{Binding}" />
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Add images…" Command="{Binding AddImagesCommand}" />
-            <Button Content="Paint mask on image #1" Command="{Binding OpenMaskEditorCommand}" IsEnabled="{Binding CanEditMask}" />
-            <Button Content="Clear mask" Command="{Binding ClearMaskCommand}" IsVisible="{Binding HasMask}" />
-            <TextBlock Text="Mask set ✓" VerticalAlignment="Center" IsVisible="{Binding HasMask}" Foreground="ForestGreen" />
-          </StackPanel>
-
-          <TextBlock Text="Prompt" FontWeight="SemiBold" />
-          <TextBox Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="90"
-                    PlaceholderText="Describe the edit you want…" />
-
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Run" Command="{Binding RunCommand}" />
-            <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
-            <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
-
-          <TextBlock Text="Iteration history" FontWeight="SemiBold" />
-          <ItemsControl ItemsSource="{Binding History}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Margin="0,4" Padding="8">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Image Source="{Binding ResultImage}" Width="80" Height="80" Stretch="UniformToFill" />
-                    <StackPanel MaxWidth="500">
-                      <TextBlock FontWeight="SemiBold">
-                        <Run Text="Iteration " /><Run Text="{Binding Index}" /><Run Text=" — workflow: " /><Run Text="{Binding WorkflowId}" />
-                      </TextBlock>
-                      <TextBlock Text="{Binding RefinedPrompt}" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding JudgeFeedback}" TextWrapping="Wrap" FontStyle="Italic" Opacity="0.8" />
-                      <TextBlock Text="Satisfied" Foreground="ForestGreen" IsVisible="{Binding Satisfied}" FontWeight="Bold" />
-                    </StackPanel>
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-
-          <TextBlock Text="Result" FontWeight="SemiBold" IsVisible="{Binding HasFinalResult}" />
-          <Image Source="{Binding FinalResult}" MaxHeight="420" Stretch="Uniform" HorizontalAlignment="Left"
-                 IsVisible="{Binding HasFinalResult}" />
-          <Button Content="Save result…" Command="{Binding SaveResultCommand}" IsVisible="{Binding HasFinalResult}" />
-
-        </StackPanel>
-      </ScrollViewer>
-    </Grid>
-
-    <!-- Mask editor overlay -->
-    <Grid Background="#AA000000" IsVisible="{Binding Editor.IsMaskEditorOpen}">
-      <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="16" CornerRadius="6"
-              MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <StackPanel Spacing="10">
-          <TextBlock Text="Paint mask on the first image" FontWeight="Bold" FontSize="16" />
-          <Viewbox MaxWidth="480" MaxHeight="480" Stretch="Uniform">
-            <Grid Width="{Binding Editor.FirstImage.Thumbnail.PixelSize.Width}"
-                  Height="{Binding Editor.FirstImage.Thumbnail.PixelSize.Height}">
-              <Image Source="{Binding Editor.FirstImage.Thumbnail}" />
-              <controls:MaskCanvas Name="MaskCanvasControl"
-                                    MaskSize="{Binding Editor.FirstImage.Thumbnail.PixelSize}"
-                                    BrushRadius="{Binding Editor.BrushRadius}"
-                                    IsErasing="{Binding Editor.IsErasing}"
-                                    Opacity="0.55" />
-            </Grid>
-          </Viewbox>
-          <StackPanel Orientation="Horizontal" Spacing="10">
-            <TextBlock Text="Brush size" VerticalAlignment="Center" />
-            <Slider Minimum="4" Maximum="120" Value="{Binding Editor.BrushRadius}" Width="160" VerticalAlignment="Center" />
-            <ToggleButton Content="Erase" IsChecked="{Binding Editor.IsErasing}" />
-            <Button Content="Clear" Click="OnClearMaskCanvasClick" />
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-            <Button Content="Cancel" Command="{Binding Editor.CloseMaskEditorCommand}" />
-            <Button Content="Done" Click="OnConfirmMaskClick" />
-          </StackPanel>
-        </StackPanel>
-      </Border>
+      <!-- No explicit ContentTemplate: the app-wide ViewLocator (see App.axaml) resolves each
+           editor tab's content view by naming convention (EditorViewModel -> EditorView). Assets
+           are no longer a tab — they're shown via the overlay below instead. -->
+      <TabControl Grid.Row="1" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}">
+        <TabControl.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="4" MinWidth="90">
+              <TextBox Text="{Binding Title}" IsReadOnly="{Binding !IsEditable}"
+                        BorderThickness="0" Background="Transparent"
+                        Padding="2,0" MinWidth="60" VerticalAlignment="Center"
+                        Loaded="OnTabTitleLoaded" />
+              <Button Content="✕" Padding="4,0" FontSize="11" VerticalAlignment="Center"
+                      IsVisible="{Binding IsClosable}"
+                      ToolTip.Tip="Close tab"
+                      Command="{Binding $parent[TabControl].DataContext.CloseTabCommand}"
+                      CommandParameter="{Binding}" />
+            </StackPanel>
+          </DataTemplate>
+        </TabControl.ItemTemplate>
+      </TabControl>
     </Grid>
 
     <!-- Settings overlay -->
@@ -132,6 +82,10 @@
           <StackPanel IsVisible="{Binding IsComfyCloud}">
             <TextBlock Text="Comfy Cloud API key (stored locally, unencrypted)" Margin="0,8,0,0" />
             <TextBox Text="{Binding ComfyCloudApiKey}" PasswordChar="•" />
+
+            <TextBlock Text="Asset page size (per scroll-load)" Margin="0,8,0,0" />
+            <Slider Minimum="10" Maximum="500" TickFrequency="10" IsSnapToTickEnabled="True" Value="{Binding AssetPageSize}" />
+            <TextBlock Text="{Binding AssetPageSize}" HorizontalAlignment="Right" />
           </StackPanel>
 
           <TextBlock Text="LLM base URL (OpenAI-compatible — OpenRouter, DeepInfra, …)" Margin="0,8,0,0" />
@@ -157,6 +111,21 @@
             <Button Content="Save" Command="{Binding $parent[Grid].DataContext.SaveSettingsCommand}" />
           </StackPanel>
         </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Assets overlay: the same full asset browser previously shown as its own permanent tab,
+         now opened on demand from the header button instead. -->
+    <Grid Background="#AA000000" IsVisible="{Binding IsAssetsOpen}">
+      <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="16" CornerRadius="6"
+              Width="900" MaxHeight="700" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,*">
+          <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <Button Content="Close" DockPanel.Dock="Right" Command="{Binding CloseAssetsCommand}" />
+            <TextBlock Text="Assets" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
+          </DockPanel>
+          <views:AssetsView Grid.Row="1" DataContext="{Binding Assets}" />
+        </Grid>
       </Border>
     </Grid>
   </Grid>

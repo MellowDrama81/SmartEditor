@@ -12,6 +12,11 @@ namespace SmartEditor.App.Services;
 public interface IEditSessionFactory
 {
     IImageEditOrchestrator CreateOrchestrator();
+
+    /// <summary>Builds a fresh <see cref="IComfyUiClient"/> from whatever settings are currently
+    /// saved, independent of a full edit session &mdash; used for asset-library browsing, which
+    /// has nothing to do with the LLM planning loop.</summary>
+    IComfyUiClient CreateComfyClient();
 }
 
 public sealed class EditSessionFactory : IEditSessionFactory
@@ -49,30 +54,33 @@ public sealed class EditSessionFactory : IEditSessionFactory
             SupportsJsonSchema = settings.LlmSupportsJsonSchema,
         }));
 
+        return new ImageEditOrchestrator(llmClient, _catalog, _guidance, CreateComfyClient(), Options.Create(new OrchestratorOptions
+        {
+            MaxIterations = settings.MaxIterations,
+        }));
+    }
+
+    public IComfyUiClient CreateComfyClient()
+    {
+        var settings = _settingsStore.Current;
+
         var comfyOptions = Options.Create(new ComfyUiOptions
         {
             BaseUrl = settings.ComfyUiBaseUrl,
             Backend = settings.ComfyUiBackend,
             ApiKey = settings.ComfyCloudApiKey,
+            AssetPageSize = settings.AssetPageSize,
         });
 
-        IComfyUiClient comfyClient;
         if (settings.ComfyUiBackend == ComfyUiBackend.Cloud)
         {
             var cloudHttp = _httpClientFactory.CreateClient(ComfyCloudHttpClientName);
             cloudHttp.BaseAddress = new Uri(settings.ComfyUiBaseUrl.TrimEnd('/') + "/");
-            comfyClient = new ComfyCloudClient(cloudHttp, comfyOptions);
-        }
-        else
-        {
-            var comfyHttp = _httpClientFactory.CreateClient();
-            comfyHttp.BaseAddress = new Uri(settings.ComfyUiBaseUrl.TrimEnd('/') + "/");
-            comfyClient = new ComfyUiClient(comfyHttp, comfyOptions);
+            return new ComfyCloudClient(cloudHttp, comfyOptions);
         }
 
-        return new ImageEditOrchestrator(llmClient, _catalog, _guidance, comfyClient, Options.Create(new OrchestratorOptions
-        {
-            MaxIterations = settings.MaxIterations,
-        }));
+        var comfyHttp = _httpClientFactory.CreateClient();
+        comfyHttp.BaseAddress = new Uri(settings.ComfyUiBaseUrl.TrimEnd('/') + "/");
+        return new ComfyUiClient(comfyHttp, comfyOptions);
     }
 }

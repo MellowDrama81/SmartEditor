@@ -41,6 +41,11 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial int MaxIterations { get; set; }
 
+    /// <summary>Only used when <see cref="IsComfyCloud"/> is set — self-hosted ComfyUI has no
+    /// paginated asset listing.</summary>
+    [ObservableProperty]
+    public partial int AssetPageSize { get; set; }
+
     public string CleartextWarning =>
         IsCleartext(ComfyUiBaseUrl) || IsCleartext(LlmBaseUrl)
             ? "One or more URLs use plain http:// — on Android this requires allowing cleartext traffic, which this app permits by default since these hosts are set at runtime."
@@ -60,6 +65,7 @@ public partial class SettingsViewModel : ViewModelBase
         LlmModel = current.LlmModel;
         LlmSupportsJsonSchema = current.LlmSupportsJsonSchema;
         MaxIterations = current.MaxIterations;
+        AssetPageSize = current.AssetPageSize;
     }
 
     // Swap in a sensible default URL when toggling backends, unless the user already typed
@@ -91,6 +97,7 @@ public partial class SettingsViewModel : ViewModelBase
             LlmModel = LlmModel,
             LlmSupportsJsonSchema = LlmSupportsJsonSchema,
             MaxIterations = Math.Clamp(MaxIterations, 1, OrchestratorOptions.HardMaxIterations),
+            AssetPageSize = Math.Clamp(AssetPageSize, 1, 500),
         });
     }
 }

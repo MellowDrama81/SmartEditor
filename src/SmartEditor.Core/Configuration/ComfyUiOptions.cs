@@ -24,4 +24,13 @@ public sealed class ComfyUiOptions
 
     /// <summary>Comfy Cloud API key. Only used when <see cref="Backend"/> is <see cref="ComfyUiBackend.Cloud"/>.</summary>
     public string ApiKey { get; set; } = "";
+
+    /// <summary>How many assets to request per page from Comfy Cloud's <c>GET /api/assets</c>
+    /// (the <c>limit</c> query param) &mdash; only used when <see cref="Backend"/> is
+    /// <see cref="ComfyUiBackend.Cloud"/>; self-hosted ComfyUI has no paginated listing to size.
+    /// The server hard-rejects (<c>INVALID_LIMIT</c>) anything over 500, confirmed live, so
+    /// <see cref="Services.ComfyCloudClient"/> clamps to [1, 500] regardless of what's configured
+    /// here. A smaller page means more, smaller requests as the user scrolls through the asset
+    /// browser; a larger page means fewer, heavier ones.</summary>
+    public int AssetPageSize { get; set; } = 500;
 }

@@ -13,6 +13,8 @@ internal sealed class FakeCloudServerHandler : HttpMessageHandler
     public string? LastPromptBody { get; private set; }
     public List<string?> ApiKeysSeen { get; } = [];
     public string JobStatus { get; set; } = "completed";
+    public List<string?> AssetListCursorsSeen { get; } = [];
+    public List<string?> AssetListLimitsSeen { get; } = [];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -68,6 +70,46 @@ internal sealed class FakeCloudServerHandler : HttpMessageHandler
             var response = new HttpResponseMessage(HttpStatusCode.Found);
             response.Headers.Location = new Uri("https://storage.googleapis.com/fake-bucket/result.png?sig=abc");
             return response;
+        }
+
+        if (path.EndsWith("api/object_info", StringComparison.Ordinal))
+        {
+            return JsonResponse("""
+                {"LoadImage":{"input":{"required":{"image":["COMBO",{"options":["cloud-a.png","cloud-b.png"]}]}}}}
+                """);
+        }
+
+        if (path.EndsWith("api/assets", StringComparison.Ordinal))
+        {
+            var cursor = uri.Query.Contains("cursor=", StringComparison.Ordinal)
+                ? Uri.UnescapeDataString(uri.Query[(uri.Query.IndexOf("cursor=", StringComparison.Ordinal) + "cursor=".Length)..].Split('&')[0])
+                : null;
+            AssetListCursorsSeen.Add(cursor);
+
+            var limit = uri.Query.Contains("limit=", StringComparison.Ordinal)
+                ? uri.Query[(uri.Query.IndexOf("limit=", StringComparison.Ordinal) + "limit=".Length)..].Split('&')[0]
+                : null;
+            AssetListLimitsSeen.Add(limit);
+
+            if (cursor is null)
+            {
+                // Page 1 of 2, to exercise pagination (has_more/next_cursor) end to end. Includes a
+                // non-"input"/"output"-tagged asset (a model file, as real Cloud accounts return
+                // alongside input/output images) to verify ComfyCloudClient filters those out.
+                return JsonResponse("""
+                    {"assets":[
+                        {"id":"asset-1","name":"a.png","display_name":"A.png","loader_path":"hash-a.png","tags":["input"]},
+                        {"id":"model-1","name":"big-model.safetensors","display_name":"big-model.safetensors","loader_path":"big-model.safetensors","tags":["models","diffusion_models"]},
+                        {"id":"asset-2","name":"b.png","display_name":"B.png","loader_path":"hash-b.png","tags":["input"]}
+                    ],"has_more":true,"next_cursor":"page2","total":4}
+                    """);
+            }
+
+            return JsonResponse("""
+                {"assets":[
+                    {"id":"asset-3","name":"c.png","display_name":"C.png","loader_path":"hash-c.png","tags":["output"]}
+                ],"has_more":false,"total":4}
+                """);
         }
 
         return new HttpResponseMessage(HttpStatusCode.NotFound);

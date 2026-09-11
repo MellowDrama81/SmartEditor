@@ -26,10 +26,14 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
         _maxIterations = options.Value.MaxIterations;
     }
 
-    public async Task<EditSession> RunAsync(EditRequest request, IProgress<EditIteration>? progress, CancellationToken ct)
+    public async Task<EditSession> RunAsync(
+        EditRequest request,
+        IProgress<EditIteration>? progress,
+        CancellationToken ct,
+        IReadOnlyDictionary<Guid, string>? alreadyUploaded = null)
     {
         var session = new EditSession { Request = request };
-        IReadOnlyDictionary<Guid, string>? uploadedImages = null;
+        IReadOnlyDictionary<Guid, string>? uploadedImages = alreadyUploaded;
         EditIteration? previousIteration = null;
 
         try
@@ -78,7 +82,26 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                 var runResult = await _comfy.RunWorkflowAsync(workflow, request, refinedPrompt, uploadedImages, null, ct);
                 uploadedImages = runResult.UploadedImageNames;
 
-                var (satisfied, feedback) = await _judge.JudgeAsync(request, refinedPrompt, workflow, runResult.ResultBytes, ct);
+                bool satisfied;
+                string feedback;
+                try
+                {
+                    (satisfied, feedback) = await _judge.JudgeAsync(request, refinedPrompt, workflow, runResult.ResultBytes, ct);
+                }
+                catch (LlmResponseParseException ex)
+                {
+                    // Same reasoning as the planner's retry-tolerance below/above: some
+                    // providers/models are noticeably less reliable at strict JSON-schema adherence
+                    // than others, and a malformed judge response says nothing about whether the
+                    // image itself is any good. Previously this propagated to the outer catch and
+                    // killed the whole session outright after a perfectly good ComfyUI run — losing
+                    // the generated image and, worse, silently stopping retries the very first time
+                    // the judge (not the planner) stumbled over JSON formatting. Treat it as "not yet
+                    // confirmed satisfactory" instead, so the loop keeps going.
+                    satisfied = false;
+                    feedback = $"The judge's response could not be parsed: {ex.Message} " +
+                               "(This iteration's own image was generated fine — only judging it failed.)";
+                }
 
                 var iteration = new EditIteration
                 {

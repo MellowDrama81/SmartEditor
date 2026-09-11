@@ -29,4 +29,28 @@ internal sealed class FakeComfyUiClient : IComfyUiClient
         var uploaded = alreadyUploaded ?? request.Images.ToDictionary(i => i.Id, i => $"uploaded-{i.Id:N}.png");
         return Task.FromResult(new ComfyRunResult(_resultFactory(CallCount), uploaded));
     }
+
+    public List<AssetInfo> Assets { get; } = [];
+
+    /// <summary>Simulates real server-side paging: <see cref="PageSize"/> assets per call.</summary>
+    public int PageSize { get; set; } = int.MaxValue;
+
+    public Task<AssetPage> ListInputAssetsPageAsync(string? cursor, CancellationToken ct)
+    {
+        var start = cursor is null ? 0 : int.Parse(cursor);
+        var page = Assets.Skip(start).Take(PageSize).ToList();
+        var next = start + page.Count;
+        var nextCursor = next < Assets.Count ? next.ToString() : null;
+        return Task.FromResult(new AssetPage(page, nextCursor));
+    }
+
+    public Task<byte[]> DownloadInputAssetAsync(string filename, CancellationToken ct) =>
+        Task.FromResult<byte[]>([1, 2, 3]);
+
+    public Task<string> UploadInputAssetAsync(byte[] bytes, string fileName, CancellationToken ct)
+    {
+        var name = $"uploaded-{fileName}";
+        Assets.Add(new AssetInfo(name, fileName));
+        return Task.FromResult(name);
+    }
 }

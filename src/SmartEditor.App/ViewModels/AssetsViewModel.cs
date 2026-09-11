@@ -1,0 +1,258 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using SmartEditor.App.Services;
+using SmartEditor.Core.Abstractions;
+using SmartEditor.Core.Models;
+
+namespace SmartEditor.App.ViewModels;
+
+/// <summary>The single, permanent "Assets" tab: browses, uploads to, and downloads from whatever
+/// ComfyUI backend is currently configured in Settings, plus purely-local tagging on top. There is
+/// only ever one instance of this (registered as a DI singleton), unlike <see cref="EditorViewModel"/>
+/// which gets a fresh instance per tab.</summary>
+public partial class AssetsViewModel : TabViewModelBase
+{
+    private readonly IEditSessionFactory _sessionFactory;
+    private readonly IFilePickerService _filePicker;
+    private readonly AssetTagsStore _tagsStore;
+
+    private CancellationTokenSource? _refreshCts;
+    private string? _nextCursor;
+    private bool _hasMore = true;
+
+    /// <summary>Every asset loaded so far, unfiltered.</summary>
+    public ObservableCollection<AssetItemViewModel> Assets { get; } = [];
+
+    /// <summary><see cref="Assets"/> narrowed by <see cref="TagFilter"/>; this is what the grid
+    /// actually binds to.</summary>
+    public ObservableCollection<AssetItemViewModel> FilteredAssets { get; } = [];
+
+    public bool HasAssets => FilteredAssets.Count > 0;
+
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    [ObservableProperty]
+    public partial string StatusMessage { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string TagFilter { get; set; } = "";
+
+    // The folder-index emoji prefix is purely cosmetic: it makes the one permanent tab read as
+    // visually distinct from the numbered, closable "Tab N" editor tabs at a glance.
+    public AssetsViewModel(IEditSessionFactory sessionFactory, IFilePickerService filePicker, AssetTagsStore tagsStore)
+        : base("\U0001F5C2 Assets", isClosable: false)
+    {
+        _sessionFactory = sessionFactory;
+        _filePicker = filePicker;
+        _tagsStore = tagsStore;
+    }
+
+    partial void OnTagFilterChanged(string value) => ApplyFilter();
+
+    /// <summary>Restarts from the first page, discarding whatever was loaded before.</summary>
+    [RelayCommand]
+    private Task RefreshAsync() => LoadPageAsync(reset: true);
+
+    /// <summary>Fetches the next page onto the end of what's already loaded. Called by the view
+    /// when the user scrolls near the bottom of the asset grid, so a large account is only ever
+    /// fetched as far as the user has actually scrolled &mdash; not all at once up front.</summary>
+    [RelayCommand]
+    private Task LoadMoreAsync() => IsLoading || !_hasMore ? Task.CompletedTask : LoadPageAsync(reset: false);
+
+    private async Task LoadPageAsync(bool reset)
+    {
+        _refreshCts?.Cancel();
+        var cts = _refreshCts = new CancellationTokenSource();
+        var ct = cts.Token;
+
+        if (reset)
+        {
+            Assets.Clear();
+            FilteredAssets.Clear();
+            OnPropertyChanged(nameof(HasAssets));
+            _nextCursor = null;
+            _hasMore = true;
+        }
+
+        if (!_hasMore)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        StatusMessage = reset ? "Loading assets…" : $"Loading more… ({Assets.Count} so far)";
+        IComfyUiClient comfy;
+        AssetPage page;
+        try
+        {
+            comfy = _sessionFactory.CreateComfyClient();
+            page = await comfy.ListInputAssetsPageAsync(_nextCursor, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // superseded by a newer refresh; leave whatever that one reports
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not load assets: {ex.Message}";
+            return;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        _nextCursor = page.NextCursor;
+        _hasMore = _nextCursor is not null;
+
+        var filter = TagFilter.Trim();
+        var newItems = new List<AssetItemViewModel>(page.Assets.Count);
+        foreach (var asset in page.Assets)
+        {
+            var item = new AssetItemViewModel(asset, _tagsStore);
+            Assets.Add(item);
+            newItems.Add(item);
+            if (filter.Length == 0 || item.Tags.Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+            {
+                FilteredAssets.Add(item);
+            }
+        }
+
+        OnPropertyChanged(nameof(HasAssets));
+        StatusMessage = _hasMore
+            ? $"{Assets.Count} assets loaded — scroll for more."
+            : Assets.Count == 1 ? "1 asset." : $"{Assets.Count} assets.";
+
+        // Thumbnails for just this page load in the background after the page itself is up, so the
+        // grid (with per-item spinners) appears immediately rather than waiting on every fetch.
+        await LoadThumbnailsAsync(comfy, newItems, ct);
+    }
+
+    private async Task LoadThumbnailsAsync(IComfyUiClient comfy, IReadOnlyList<AssetItemViewModel> items, CancellationToken ct)
+    {
+        // Sequential, not parallel: a self-hosted ComfyUI box is typically a single GPU machine —
+        // don't hammer it with a request storm just to populate a thumbnail grid. Each item appears
+        // in the grid immediately with a spinner and fills in as its own fetch completes. Scoped to
+        // just the page that was loaded, not the whole running Assets list.
+        foreach (var item in items)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                var bytes = await comfy.DownloadInputAssetAsync(item.Filename, ct);
+                item.SetBytes(bytes);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch
+            {
+                item.IsLoadingThumbnail = false; // best-effort thumbnails; move on if one fetch fails
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddFilesAsync()
+    {
+        var picked = await _filePicker.PickImagesAsync();
+        if (picked.Count == 0)
+        {
+            return;
+        }
+
+        StatusMessage = $"Uploading {picked.Count} file(s)…";
+        try
+        {
+            var comfy = _sessionFactory.CreateComfyClient();
+            foreach (var file in picked)
+            {
+                var name = await comfy.UploadInputAssetAsync(file.Bytes, file.Name, CancellationToken.None);
+                // Comfy's upload response only carries the storage filename, not a full asset
+                // record — this stands in for the display name until the user hits Refresh, which
+                // picks up the real one from the listing API on Cloud.
+                var item = new AssetItemViewModel(new AssetInfo(name, file.Name), _tagsStore);
+                item.SetBytes(file.Bytes);
+                Assets.Insert(0, item);
+            }
+            ApplyFilter();
+            StatusMessage = $"Uploaded {picked.Count} file(s).";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Upload failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>Uploads a freshly generated result into Comfy's input asset store and inserts it at
+    /// the front of the browsable list, so it's available immediately &mdash; both to look at and
+    /// to reuse as a new source image &mdash; without waiting for a Refresh. Uploading it for real
+    /// (rather than just inserting a locally-labelled placeholder) matters: <see cref="EditorViewModel.AddAssetToSourcesAsync"/>
+    /// trusts an asset's <see cref="AssetItemViewModel.Filename"/> to already exist on the backend
+    /// and skips re-uploading it, so a fabricated filename would break a later run that reused this
+    /// result as a source image.</summary>
+    public async Task AddGeneratedResultAsync(byte[] bytes, string displayName)
+    {
+        try
+        {
+            var comfy = _sessionFactory.CreateComfyClient();
+            var name = await comfy.UploadInputAssetAsync(bytes, displayName, CancellationToken.None);
+            InsertAtFront(name, displayName, bytes);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not add the generated result to the asset library: {ex.Message}";
+        }
+    }
+
+    /// <summary>Inserts an asset that's already been uploaded elsewhere (e.g. a source image
+    /// added to an editor tab, which uploads it itself right away) at the front of the browsable
+    /// list, so it's visible immediately without waiting for a Refresh &mdash; without re-uploading
+    /// it under a second name.</summary>
+    public void AddAlreadyUploaded(string filename, string displayName, byte[] bytes) =>
+        InsertAtFront(filename, displayName, bytes);
+
+    private void InsertAtFront(string filename, string displayName, byte[] bytes)
+    {
+        var item = new AssetItemViewModel(new AssetInfo(filename, displayName), _tagsStore);
+        item.SetBytes(bytes);
+        Assets.Insert(0, item);
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private async Task DownloadAsync(AssetItemViewModel item)
+    {
+        try
+        {
+            var bytes = item.Bytes ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(item.Filename, CancellationToken.None);
+            var saved = await _filePicker.SaveFileAsync(bytes, item.Filename);
+            StatusMessage = saved ? $"Saved {item.Filename}." : StatusMessage;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not download {item.Filename}: {ex.Message}";
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        var filter = TagFilter.Trim();
+        FilteredAssets.Clear();
+        foreach (var item in Assets)
+        {
+            if (filter.Length == 0 || item.Tags.Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+            {
+                FilteredAssets.Add(item);
+            }
+        }
+        OnPropertyChanged(nameof(HasAssets));
+    }
+}

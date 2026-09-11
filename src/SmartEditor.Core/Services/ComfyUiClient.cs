@@ -131,6 +131,18 @@ public sealed class ComfyUiClient : ComfyUiClientBase
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    protected override async Task<JsonNode> FetchObjectInfoAsync(CancellationToken ct)
+    {
+        using var response = await _http.GetAsync("object_info", ct);
+        var responseText = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ComfyWorkflowException($"Could not fetch ComfyUI's object_info ({(int)response.StatusCode}).");
+        }
+
+        return JsonNode.Parse(responseText) ?? throw new ComfyWorkflowException("ComfyUI's object_info response was empty.");
+    }
+
     protected override Task ReportProgressAsync(string clientId, IProgress<double> progress, CancellationToken ct) =>
         ListenForProgressAsync(clientId, progress, ct);
 

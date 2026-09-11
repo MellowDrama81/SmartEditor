@@ -16,6 +16,11 @@ public sealed record AppSettings
     /// <summary>Only used when <see cref="ComfyUiBackend"/> is <see cref="Configuration.ComfyUiBackend.Cloud"/>.</summary>
     public string ComfyCloudApiKey { get; init; } = "";
 
+    /// <summary>How many assets to fetch per page (Comfy Cloud only — self-hosted ComfyUI has no
+    /// paginated asset listing). Clamped to [1, 500] by <see cref="Core.Services.ComfyCloudClient"/>,
+    /// the server's own hard maximum.</summary>
+    public int AssetPageSize { get; init; } = 500;
+
     public string LlmBaseUrl { get; init; } = "https://openrouter.ai/api/v1";
     public string LlmApiKey { get; init; } = "";
     public string LlmModel { get; init; } = "";

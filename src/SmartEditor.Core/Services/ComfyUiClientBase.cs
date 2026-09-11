@@ -103,6 +103,53 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
         }
     }
 
+    public Task<string> UploadInputAssetAsync(byte[] bytes, string fileName, CancellationToken ct) =>
+        UploadImageAsync(bytes, fileName, ct);
+
+    public Task<byte[]> DownloadInputAssetAsync(string filename, CancellationToken ct) =>
+        FetchImageAsync(filename, subfolder: "", type: "input", ct);
+
+    /// <summary>Default (self-hosted) implementation: falls back to the <c>LoadImage</c> node's
+    /// own dropdown, since there's no dedicated asset-listing API there. <see cref="ComfyCloudClient"/>
+    /// overrides this with the real, paginated <c>GET /api/assets</c> endpoint instead. A
+    /// self-hosted server has no pagination to page through, so <paramref name="cursor"/> is
+    /// ignored and every call (there should only ever be one — the first page's
+    /// <see cref="AssetPage.NextCursor"/> is always <c>null</c>) returns the full listing from a
+    /// single <c>/object_info</c> fetch.</summary>
+    public virtual async Task<AssetPage> ListInputAssetsPageAsync(string? cursor, CancellationToken ct)
+    {
+        var objectInfo = await FetchObjectInfoAsync(ct);
+        var imageField = objectInfo["LoadImage"]?["input"]?["required"]?["image"]
+                          ?? throw new ComfyWorkflowException(
+                              "ComfyUI's object_info response has no LoadImage node/image input definition.");
+
+        // Two shapes are seen in the wild depending on ComfyUI version: an older plain
+        // [ [ "a.png", "b.png" ], {...} ] combo, or the newer ["COMBO", { "options": [...] }] shape.
+        JsonArray? options = imageField switch
+        {
+            JsonArray { Count: > 0 } outer when outer[0] is JsonArray inner => inner,
+            JsonArray { Count: > 1 } outer when outer[0]?.GetValue<string>() == "COMBO"
+                                                 && outer[1] is JsonObject combo
+                                                 && combo["options"] is JsonArray opts => opts,
+            _ => null,
+        };
+
+        if (options is null)
+        {
+            throw new ComfyWorkflowException("Could not parse ComfyUI's LoadImage 'image' input options.");
+        }
+
+        // ComfyUI's own combo enum has been observed to list the same filename more than once
+        // (verbatim repeats, not a SmartEditor artifact) — dedupe rather than show/re-fetch the
+        // same asset multiple times. No id/display-name concept exists here, so both fall back to
+        // the storage filename itself.
+        var assets = options.Select(n => n!.GetValue<string>())
+            .Distinct(StringComparer.Ordinal)
+            .Select(name => new AssetInfo(name, name))
+            .ToList();
+        return new AssetPage(assets, NextCursor: null);
+    }
+
     protected abstract Task<string> UploadImageAsync(byte[] bytes, string fileName, CancellationToken ct);
 
     protected abstract Task<string> SubmitPromptAsync(JsonNode graph, string clientId, CancellationToken ct);
@@ -110,6 +157,11 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
     protected abstract Task<JsonNode> WaitForCompletionAsync(string promptId, CancellationToken ct);
 
     protected abstract Task<byte[]> FetchImageAsync(string filename, string subfolder, string type, CancellationToken ct);
+
+    /// <summary>Fetches ComfyUI's full node-definition catalog. This is a genuinely large payload
+    /// (multiple MB) with no lighter-weight alternative for listing already-uploaded assets, so
+    /// callers (<see cref="ListInputAssetsPageAsync"/>) should call it deliberately, not on a hot path.</summary>
+    protected abstract Task<JsonNode> FetchObjectInfoAsync(CancellationToken ct);
 
     /// <summary>Best-effort progress reporting; completion is always determined via
     /// <see cref="WaitForCompletionAsync"/>, never this. Default no-op.</summary>

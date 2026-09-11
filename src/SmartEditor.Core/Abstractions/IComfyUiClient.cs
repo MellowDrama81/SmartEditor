@@ -14,6 +14,11 @@ public sealed record ComfyRunResult(
     byte[] ResultBytes,
     IReadOnlyDictionary<Guid, string> UploadedImageNames);
 
+/// <summary>One page of <see cref="IComfyUiClient.ListInputAssetsPageAsync"/>. <see cref="NextCursor"/>
+/// is <c>null</c> once there is nothing more to fetch (pass it back in to get the following page,
+/// or a caller that just wants the first page passes <c>null</c> in).</summary>
+public sealed record AssetPage(IReadOnlyList<AssetInfo> Assets, string? NextCursor);
+
 /// <summary>Talks to a ComfyUI server: uploads images, submits a workflow graph with values bound
 /// into it, waits for completion, and fetches the resulting image.</summary>
 public interface IComfyUiClient
@@ -29,4 +34,29 @@ public interface IComfyUiClient
         IReadOnlyDictionary<Guid, string>? alreadyUploaded,
         IProgress<double>? progress,
         CancellationToken ct);
+
+    /// <summary>Fetches one page of every browsable image currently sitting on the backend &mdash;
+    /// both uploaded source images (the <c>input</c> store) and prior generation results
+    /// (<c>output</c>). Pass <c>cursor: null</c> for the first page, then feed each page's own
+    /// <see cref="AssetPage.NextCursor"/> back in to advance; <c>NextCursor</c> is <c>null</c> once
+    /// there's nothing left, so a caller (e.g. a scroll-to-load-more UI) only ever fetches as much
+    /// as it actually needs to show, instead of the whole listing up front &mdash; on Comfy Cloud an
+    /// account can have thousands of assets. On Comfy Cloud this reads the real, paginated
+    /// <c>GET /api/assets</c> endpoint (ids, display names, and more), filtered to
+    /// "input"/"output"-tagged entries only &mdash; that endpoint also returns installed model
+    /// weights (checkpoints/LoRAs/etc, individually up to tens of GB), which must never be listed
+    /// or thumbnailed here. Self-hosted ComfyUI has no equivalent listing API and no concept of
+    /// tags or cursors &mdash; there, this falls back to the filenames listed in the
+    /// <c>LoadImage</c> node's own dropdown (<c>/object_info</c>, a single non-paginated fetch that
+    /// only ever covers <c>input</c> images with no id/display name distinct from the storage
+    /// filename), always returned as one page with a <c>null</c> <see cref="AssetPage.NextCursor"/>.</summary>
+    Task<AssetPage> ListInputAssetsPageAsync(string? cursor, CancellationToken ct);
+
+    /// <summary>Downloads one asset's raw bytes from the <c>input</c> store by filename (as
+    /// returned by <see cref="ListInputAssetsPageAsync"/> or <see cref="UploadInputAssetAsync"/>).</summary>
+    Task<byte[]> DownloadInputAssetAsync(string filename, CancellationToken ct);
+
+    /// <summary>Uploads a new image into ComfyUI's <c>input</c> asset store and returns the
+    /// server-assigned filename, independent of any workflow run.</summary>
+    Task<string> UploadInputAssetAsync(byte[] bytes, string fileName, CancellationToken ct);
 }

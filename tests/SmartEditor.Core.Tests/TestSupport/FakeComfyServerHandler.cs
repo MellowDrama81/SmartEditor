@@ -10,6 +10,11 @@ internal sealed class FakeComfyServerHandler : HttpMessageHandler
     public int UploadCount { get; private set; }
     public string? LastPromptBody { get; private set; }
 
+    /// <summary>The raw JSON array rendered as the "image" input's combo options in the fake
+    /// object_info response, e.g. <c>["a.png","b.png"]</c> (older plain-list shape). Override to
+    /// <c>"\"COMBO\",{\"options\":[\"a.png\"]}"</c> to exercise the newer COMBO shape instead.</summary>
+    public string ObjectInfoImageListJson { get; set; } = """["input-a.png","input-b.png"]""";
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var path = request.RequestUri!.AbsolutePath;
@@ -36,6 +41,14 @@ internal sealed class FakeComfyServerHandler : HttpMessageHandler
         if (path.EndsWith("view", StringComparison.Ordinal))
         {
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3, 4]) };
+        }
+
+        if (path.EndsWith("object_info", StringComparison.Ordinal))
+        {
+            return JsonResponse(
+                """{"LoadImage":{"input":{"required":{"image":[""" +
+                ObjectInfoImageListJson +
+                """,{"image_upload":true}]}}}}""");
         }
 
         return new HttpResponseMessage(HttpStatusCode.NotFound);

@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using SmartEditor.Core.Abstractions;
 using SmartEditor.Core.Configuration;
+using SmartEditor.Core.Models;
 
 namespace SmartEditor.Core.Services;
 
@@ -23,11 +24,15 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
 
     private readonly HttpClient _http;
     private readonly string _apiKey;
+    private readonly int _assetPageSize;
 
     public ComfyCloudClient(HttpClient http, IOptions<ComfyUiOptions> options)
     {
         _http = http;
         _apiKey = options.Value.ApiKey;
+        // The server hard-rejects (INVALID_LIMIT) anything over 500, confirmed live, so a bad
+        // configured value can never break the request — it just gets clamped instead.
+        _assetPageSize = Math.Clamp(options.Value.AssetPageSize, 1, 500);
     }
 
     private void ApplyAuth(HttpRequestMessage request)
@@ -179,6 +184,100 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
         }
 
         return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <summary>Comfy Cloud has a real, paginated asset-listing API (<c>GET /api/assets</c>,
+    /// confirmed against a live account and Comfy's own docs as Cloud-only) with genuine display
+    /// names, sizes, and timestamps &mdash; used instead of the generic <c>/object_info</c>
+    /// fallback the base class uses for self-hosted ComfyUI. The API also returns an asset id, but
+    /// that id is never what actually references the asset anywhere in ComfyUI (workflows, view,
+    /// download all key on the filename) so it isn't surfaced here at all.
+    ///
+    /// Fetches exactly one page per call (the server's own <c>cursor</c>/<c>has_more</c> scheme,
+    /// passed straight through as <see cref="AssetPage.NextCursor"/>) rather than following every
+    /// page itself: a real account can have thousands of assets (one confirmed test account had
+    /// ~4,900, ~10 pages at the API's 500-per-page max), and a caller like a scroll-to-load-more UI
+    /// should only fetch the next batch once the viewer actually scrolls that far, not the whole
+    /// listing up front.
+    ///
+    /// Despite the method's "input" name (shared with the self-hosted base-class implementation it
+    /// overrides), this yields both "input" (uploaded source images) and "output" (prior generation
+    /// results) tagged assets, so the same browser doubles as a way to reuse earlier results as new
+    /// source images &mdash; and filters out every other tag (installed model weights, which can
+    /// individually be tens of GB and must never be listed or thumbnailed here). Since a raw
+    /// 500-asset batch can happen to contain few or no browsable ("input"/"output") entries, this
+    /// keeps advancing through the server's own pages internally until it has at least one
+    /// browsable asset to return or genuinely runs out (<c>has_more: false</c>), so a caller never
+    /// sees a spurious empty-but-not-done page.</summary>
+    public override async Task<AssetPage> ListInputAssetsPageAsync(string? cursor, CancellationToken ct)
+    {
+        var assets = new List<AssetInfo>();
+
+        do
+        {
+            // sort=created_at&order=desc (newest first) is confirmed live as the server's own
+            // default, but is passed explicitly rather than relied on implicitly.
+            var query = $"api/assets?limit={_assetPageSize}&sort=created_at&order=desc" +
+                        (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, query);
+            ApplyAuth(request);
+            using var response = await _http.SendAsync(request, ct);
+            var responseText = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new ComfyWorkflowException($"Could not list Comfy Cloud assets ({(int)response.StatusCode}): {responseText}");
+            }
+
+            var root = JsonNode.Parse(responseText)
+                       ?? throw new ComfyWorkflowException("Comfy Cloud's asset list response was empty.");
+
+            foreach (var asset in root["assets"]?.AsArray() ?? [])
+            {
+                // GET /api/assets returns EVERY asset in the account, not just images — confirmed
+                // live it also includes installed model weights ("models"/"diffusion_models"/etc,
+                // individually up to tens of GB). Only "input" (uploaded source images) and
+                // "output" (prior generation results) tagged assets belong in the asset browser;
+                // anything else here would list (and, via thumbnail loading downstream, try to
+                // fetch) multi-gigabyte model files as if they were images, which is what made the
+                // Assets tab hang.
+                var tags = asset?["tags"]?.AsArray();
+                var isBrowsable = tags is not null && tags.Any(t =>
+                    string.Equals(t?.GetValue<string>(), "input", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t?.GetValue<string>(), "output", StringComparison.OrdinalIgnoreCase));
+                if (!isBrowsable)
+                {
+                    continue;
+                }
+
+                // loader_path is the actual storage filename LoadImage/api/view need; name/display_name
+                // are the human-facing labels and can differ from it (e.g. a hashed upload filename).
+                var name = asset?["loader_path"]?.GetValue<string>() ?? asset?["name"]?.GetValue<string>();
+                var displayName = asset?["display_name"]?.GetValue<string>() ?? name;
+                if (name is not null)
+                {
+                    assets.Add(new AssetInfo(name, displayName ?? name));
+                }
+            }
+
+            var hasMore = root["has_more"]?.GetValue<bool>() ?? false;
+            cursor = hasMore ? root["next_cursor"]?.GetValue<string>() : null;
+        } while (assets.Count == 0 && cursor is not null);
+
+        return new AssetPage(assets, cursor);
+    }
+
+    protected override async Task<JsonNode> FetchObjectInfoAsync(CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/object_info");
+        ApplyAuth(request);
+        using var response = await _http.SendAsync(request, ct);
+        var responseText = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ComfyWorkflowException($"Could not fetch Comfy Cloud's object_info ({(int)response.StatusCode}).");
+        }
+
+        return JsonNode.Parse(responseText) ?? throw new ComfyWorkflowException("Comfy Cloud's object_info response was empty.");
     }
 
     private static bool IsRedirect(HttpStatusCode statusCode) => statusCode is

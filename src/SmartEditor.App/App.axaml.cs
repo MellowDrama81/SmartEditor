@@ -59,6 +59,7 @@ public partial class App : Application
         services.AddHttpClient(EditSessionFactory.ComfyCloudHttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddSingleton<AppSettingsStore>();
+        services.AddSingleton<AssetTagsStore>();
         services.AddSingleton<IFilePickerService, AvaloniaFilePickerService>();
         services.AddSingleton<IWorkflowCatalog>(_ =>
             new FileWorkflowCatalog(Path.Combine(AppContext.BaseDirectory, "Workflows")));
@@ -67,6 +68,12 @@ public partial class App : Application
         services.AddSingleton<IEditSessionFactory, EditSessionFactory>();
 
         services.AddTransient<EditorViewModel>();
+        // Each editor tab needs its own EditorViewModel instance created on demand (not just one
+        // resolved at ShellViewModel construction time), so ShellViewModel takes a factory delegate
+        // instead of a concrete instance.
+        services.AddTransient<Func<EditorViewModel>>(sp => sp.GetRequiredService<EditorViewModel>);
+        // One Assets tab for the whole app, unlike editor tabs — a true singleton, not per-tab.
+        services.AddSingleton<AssetsViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<ShellViewModel>();
 

@@ -73,6 +73,26 @@ public class ImageEditOrchestratorTests
     }
 
     [Fact]
+    public async Task Seeds_the_first_iteration_with_a_caller_supplied_upload_map()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var orchestrator = MakeOrchestrator(llm, comfy);
+        var request = MakeRequest();
+        var seed = new Dictionary<Guid, string> { [request.Images[0].Id] = "already-on-comfy.png" };
+
+        await orchestrator.RunAsync(request, progress: null, CancellationToken.None, alreadyUploaded: seed);
+
+        // Unlike the null-seeded case, the very first call already carries the pre-known mapping —
+        // proving an image uploaded (or picked from the asset library) before Run was clicked isn't
+        // uploaded a second time.
+        Assert.Single(comfy.ReceivedUploadMaps);
+        Assert.Same(seed, comfy.ReceivedUploadMaps[0]);
+    }
+
+    [Fact]
     public async Task Includes_model_guidance_matching_the_catalog_in_the_planner_system_prompt()
     {
         var llm = new FakeLlmClient(
@@ -136,6 +156,32 @@ public class ImageEditOrchestratorTests
         Assert.Null(session.History[0].ResultImageBytes);
         Assert.True(session.History[1].Satisfied);
         Assert.Equal(1, comfy.CallCount); // the malformed attempt never reached Comfy at all
+    }
+
+    [Fact]
+    public async Task Treats_an_unparsable_judge_response_as_unsatisfied_instead_of_failing_the_session()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"attempt 1","reasoning":"r1"}""",
+            // Not JSON at all — simulates a provider that ignores the schema for the judge call
+            // specifically (the planner call above is fine, so this isn't a planner-retry case).
+            "the image looks pretty good to me",
+            """{"workflowId":"wf1","refinedPrompt":"attempt 2","reasoning":"r2"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var orchestrator = MakeOrchestrator(llm, comfy, maxIterations: 2);
+
+        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal(2, session.History.Count);
+        // Unlike a malformed plan (never reaches Comfy), a malformed judge response happens AFTER
+        // a real ComfyUI run — that generated image must not be lost just because judging it failed.
+        Assert.False(session.History[0].Satisfied);
+        Assert.NotNull(session.History[0].ResultImageBytes);
+        Assert.Contains("could not be parsed", session.History[0].JudgeFeedback);
+        Assert.True(session.History[1].Satisfied);
+        Assert.Equal(2, comfy.CallCount);
     }
 
     [Fact]
