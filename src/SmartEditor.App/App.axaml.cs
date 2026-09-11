@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
 using Microsoft.Extensions.DependencyInjection;
 using SmartEditor.App.Services;
 using SmartEditor.App.ViewModels;
@@ -62,10 +63,15 @@ public partial class App : Application
         services.AddSingleton<AssetTagsStore>();
         services.AddSingleton<AssetThumbnailCache>();
         services.AddSingleton<IFilePickerService, AvaloniaFilePickerService>();
-        services.AddSingleton<IWorkflowCatalog>(_ =>
-            new FileWorkflowCatalog(Path.Combine(AppContext.BaseDirectory, "Workflows")));
+
+        var workflowsDirectory = Path.Combine(AppContext.BaseDirectory, "Workflows");
+        var guidanceDirectory = Path.Combine(AppContext.BaseDirectory, "Guidance");
+        EnsureBundledFilesExtracted("Workflows", workflowsDirectory);
+        EnsureBundledFilesExtracted("Guidance", guidanceDirectory);
+
+        services.AddSingleton<IWorkflowCatalog>(_ => new FileWorkflowCatalog(workflowsDirectory));
         services.AddSingleton<IModelGuidanceCatalog>(_ =>
-            new FileModelGuidanceCatalog(Path.Combine(AppContext.BaseDirectory, "Guidance", "model-guidance.json")));
+            new FileModelGuidanceCatalog(Path.Combine(guidanceDirectory, "model-guidance.json")));
         services.AddSingleton<IEditSessionFactory, EditSessionFactory>();
 
         services.AddTransient<EditorViewModel>();
@@ -79,5 +85,36 @@ public partial class App : Application
         services.AddTransient<ShellViewModel>();
 
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>Copies every <c>avares://SmartEditor.App/{avaresFolderName}/...</c> resource (see
+    /// the matching <c>AvaloniaResource</c> items in SmartEditor.App.csproj) into
+    /// <paramref name="targetDirectory"/>, so <see cref="FileWorkflowCatalog"/> and
+    /// <see cref="FileModelGuidanceCatalog"/> can keep reading real files from a real path on every
+    /// platform. Skipped if the directory already has anything in it — on Desktop, SmartEditor.Core's
+    /// own Content/CopyToOutputDirectory items already put the files there at build time, so this
+    /// is a no-op; on Android (whose private app-data AppContext.BaseDirectory starts out empty,
+    /// which is what actually causes a fresh install to fail with "Workflows directory not found")
+    /// this is what populates it, once, on first launch.</summary>
+    private static void EnsureBundledFilesExtracted(string avaresFolderName, string targetDirectory)
+    {
+        if (Directory.Exists(targetDirectory) && Directory.EnumerateFileSystemEntries(targetDirectory).Any())
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(targetDirectory);
+
+        var folderUri = new Uri($"avares://SmartEditor.App/{avaresFolderName}/");
+        foreach (var assetUri in AssetLoader.GetAssets(folderUri, null))
+        {
+            var relativePath = assetUri.AbsolutePath[folderUri.AbsolutePath.Length..].TrimStart('/');
+            var destinationPath = Path.Combine(targetDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+
+            using var source = AssetLoader.Open(assetUri);
+            using var destination = File.Create(destinationPath);
+            source.CopyTo(destination);
+        }
     }
 }

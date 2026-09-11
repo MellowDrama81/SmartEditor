@@ -8,6 +8,21 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!-- Bundled cross-platform as Avalonia resources (embedded in the assembly, readable via
+         avares:// on every head — Desktop, Android, and any future target) rather than relying on
+         SmartEditor.Core's own Content/CopyToOutputDirectory items: those only populate a real
+         filesystem path next to the executable on Desktop. On Android there is no such build-time
+         "next to the executable" location — AppContext.BaseDirectory there is the app's private,
+         initially-empty data directory — so FileWorkflowCatalog/FileModelGuidanceCatalog would find
+         nothing there at runtime. App.axaml.cs extracts these into that directory on first run
+         (see EnsureBundledFilesExtracted) so the same File/Directory-based catalog classes keep
+         working unchanged on every platform. -->
+    <AvaloniaResource Include="..\SmartEditor.Core\Workflows\**\*.json">
+      <Link>Workflows\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\SmartEditor.Core\Guidance\**\*.json">
+      <Link>Guidance\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </AvaloniaResource>
   </ItemGroup>
 
   <ItemGroup>
