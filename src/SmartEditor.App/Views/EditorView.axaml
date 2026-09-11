@@ -82,7 +82,7 @@
     <!-- Mask editor overlay, scoped to this tab -->
     <Grid Background="#AA000000" IsVisible="{Binding IsMaskEditorOpen}">
       <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="16" CornerRadius="6"
-              MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center">
+              MaxWidth="560" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="10">
           <TextBlock Text="Paint mask on the first image" FontWeight="Bold" FontSize="16" />
           <Viewbox MaxWidth="480" MaxHeight="480" Stretch="Uniform">
@@ -110,21 +110,26 @@
       </Border>
     </Grid>
 
-    <!-- Asset-library picker overlay: browse/select from what's already on the Comfy backend. -->
+    <!-- Asset-library picker overlay: browse/select from what's already on the Comfy backend.
+         MaxWidth (not a fixed Width) so it shrinks to fit a phone screen in portrait instead of
+         overflowing it, and Margin so it never touches the screen edges once it does shrink. -->
     <Grid Background="#AA000000" IsVisible="{Binding IsAssetPickerOpen}">
       <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="16" CornerRadius="6"
-              Width="640" MaxHeight="600" HorizontalAlignment="Center" VerticalAlignment="Center">
+              MaxWidth="640" MaxHeight="600" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center">
         <Grid RowDefinitions="Auto,Auto,*,Auto">
           <TextBlock Grid.Row="0" Text="Add source images from Comfy assets" FontWeight="Bold" FontSize="16" Margin="0,0,0,10" />
 
-          <DockPanel Grid.Row="1" Margin="0,0,0,10">
-            <Button Content="Refresh" DockPanel.Dock="Left" Command="{Binding AssetLibrary.RefreshCommand}" />
-            <ProgressBar DockPanel.Dock="Left" IsIndeterminate="True" IsVisible="{Binding AssetLibrary.IsLoading}"
+          <!-- WrapPanel, not DockPanel: on a narrow phone screen these controls don't all fit on
+               one line, so they need to wrap onto a second line instead of forcing the whole
+               overlay wider than the screen. -->
+          <WrapPanel Grid.Row="1" Margin="0,0,0,10">
+            <Button Content="Refresh" Command="{Binding AssetLibrary.RefreshCommand}" />
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding AssetLibrary.IsLoading}"
                          Width="18" Height="18" Margin="8,0,0,0" />
-            <TextBlock Text="{Binding AssetLibrary.StatusMessage}" DockPanel.Dock="Right" VerticalAlignment="Center"
-                       Margin="12,0,0,0" TextWrapping="Wrap" />
-            <TextBox Text="{Binding AssetLibrary.TagFilter}" PlaceholderText="Filter by tag…" MinWidth="140" Margin="12,0,0,0" />
-          </DockPanel>
+            <TextBox Text="{Binding AssetLibrary.TagFilter}" PlaceholderText="Filter by tag…" MinWidth="140" Margin="12,4,0,0" />
+            <TextBlock Text="{Binding AssetLibrary.StatusMessage}" VerticalAlignment="Center"
+                       Margin="12,4,0,0" MaxWidth="260" TextWrapping="Wrap" />
+          </WrapPanel>
 
           <ScrollViewer Grid.Row="2" ScrollChanged="OnAssetPickerScrollChanged">
             <Panel>

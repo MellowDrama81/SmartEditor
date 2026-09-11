@@ -78,7 +78,7 @@
     <!-- Settings overlay -->
     <Grid Background="#AA000000" IsVisible="{Binding IsSettingsOpen}">
       <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="20" CornerRadius="6"
-              MaxWidth="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+              MaxWidth="480" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="6" DataContext="{Binding Settings}">
           <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" Margin="0,0,0,8" />
 
@@ -123,10 +123,12 @@
     </Grid>
 
     <!-- Assets overlay: the same full asset browser previously shown as its own permanent tab,
-         now opened on demand from the header button instead. -->
+         now opened on demand from the header button instead. MaxWidth (not a fixed Width) so it
+         shrinks to fit a phone screen in portrait instead of overflowing it, and Margin so it
+         never touches the screen edges once it does shrink. -->
     <Grid Background="#AA000000" IsVisible="{Binding IsAssetsOpen}">
       <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="16" CornerRadius="6"
-              Width="900" MaxHeight="700" HorizontalAlignment="Center" VerticalAlignment="Center">
+              MaxWidth="900" MaxHeight="700" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center">
         <Grid RowDefinitions="Auto,*">
           <DockPanel Grid.Row="0" Margin="0,0,0,10">
             <Button Content="Close" DockPanel.Dock="Right" Command="{Binding CloseAssetsCommand}" />

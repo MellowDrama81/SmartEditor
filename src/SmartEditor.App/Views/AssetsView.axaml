@@ -7,15 +7,18 @@
              x:Class="SmartEditor.App.Views.AssetsView">
 
   <Grid RowDefinitions="Auto,*" Margin="0,12,0,0">
-    <DockPanel Grid.Row="0" Margin="0,0,0,12">
-      <Button Content="Add files…" DockPanel.Dock="Left" Command="{Binding AddFilesCommand}" />
-      <Button Content="Refresh" DockPanel.Dock="Left" Margin="8,0,0,0" Command="{Binding RefreshCommand}" />
-      <ProgressBar DockPanel.Dock="Left" IsIndeterminate="True" IsVisible="{Binding IsLoading}"
+    <!-- WrapPanel, not DockPanel: on a narrow phone screen these controls don't all fit on one
+         line, so they need to wrap onto a second line instead of forcing this view (and the
+         overlay/window hosting it) wider than the screen. -->
+    <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+      <Button Content="Add files…" Command="{Binding AddFilesCommand}" />
+      <Button Content="Refresh" Margin="8,0,0,0" Command="{Binding RefreshCommand}" />
+      <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}"
                    Width="20" Height="20" Margin="8,0,0,0" />
-      <TextBlock Text="{Binding StatusMessage}" DockPanel.Dock="Right" VerticalAlignment="Center"
-                 Margin="12,0,0,0" TextWrapping="Wrap" />
-      <TextBox Text="{Binding TagFilter}" PlaceholderText="Filter by tag…" MinWidth="160" Margin="12,0,0,0" />
-    </DockPanel>
+      <TextBox Text="{Binding TagFilter}" PlaceholderText="Filter by tag…" MinWidth="160" Margin="12,4,0,0" />
+      <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center"
+                 Margin="12,4,0,0" MaxWidth="300" TextWrapping="Wrap" />
+    </WrapPanel>
 
     <ScrollViewer Grid.Row="1" ScrollChanged="OnAssetsScrollChanged">
       <Panel>
