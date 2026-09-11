@@ -38,27 +38,42 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
             {
                 ct.ThrowIfCancellationRequested();
 
-                var (workflow, refinedPrompt, reasoning) = await _planner.PlanAsync(request, previousIteration, ct);
-
-                if (request.Images.Count < workflow.Capabilities.MinImages || request.Images.Count > workflow.Capabilities.MaxImages)
+                WorkflowDefinition workflow;
+                string refinedPrompt;
+                string reasoning;
+                try
                 {
-                    var mismatch = new EditIteration
+                    (workflow, refinedPrompt, reasoning) = await _planner.PlanAsync(request, previousIteration, ct);
+                }
+                catch (LlmResponseParseException ex)
+                {
+                    // A malformed plan (unparsable JSON, an unrecognized workflowId, or an empty
+                    // refinedPrompt) is a retry-able planning mistake, not a fatal session error —
+                    // some providers/models are noticeably less reliable at strict JSON-schema
+                    // adherence than others. Feed the failure back so the next attempt can correct
+                    // it, the same way an image-count mismatch or an unsatisfied judge result does.
+                    var malformed = new EditIteration
                     {
                         Index = i,
-                        WorkflowId = workflow.Id,
-                        RefinedPrompt = refinedPrompt,
-                        PlannerReasoning = reasoning,
+                        WorkflowId = "(unparsable plan)",
+                        RefinedPrompt = "",
+                        PlannerReasoning = "",
                         ResultImageBytes = null,
                         Satisfied = false,
-                        JudgeFeedback = $"Workflow '{workflow.DisplayName}' requires between {workflow.Capabilities.MinImages} " +
-                                        $"and {workflow.Capabilities.MaxImages} image(s), but {request.Images.Count} were supplied. " +
-                                        "Choose a workflow that fits the supplied image count.",
+                        JudgeFeedback = $"The previous response could not be used: {ex.Message} " +
+                                        "Respond with ONLY the required JSON object: workflowId must be copied " +
+                                        "exactly as listed in the catalog (no extra punctuation or whitespace), " +
+                                        "and refinedPrompt must not be empty.",
                     };
-                    session.History.Add(mismatch);
-                    progress?.Report(mismatch);
-                    previousIteration = mismatch;
+                    session.History.Add(malformed);
+                    progress?.Report(malformed);
+                    previousIteration = malformed;
                     continue;
                 }
+
+                // No image-count mismatch check here: ImageEditPlanner.PlanAsync only ever offers
+                // (and only ever resolves an id against) workflows whose min/maxImages already fit
+                // request.Images.Count, so `workflow` is guaranteed compatible by construction.
 
                 var runResult = await _comfy.RunWorkflowAsync(workflow, request, refinedPrompt, uploadedImages, null, ct);
                 uploadedImages = runResult.UploadedImageNames;

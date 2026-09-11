@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using SmartEditor.Core.Abstractions;
 using SmartEditor.Core.Models;
 
@@ -8,7 +9,7 @@ namespace SmartEditor.Core.Services;
 
 /// <summary>Chooses a workflow from the catalog and refines the user's prompt for it. Internal
 /// collaborator of <see cref="ImageEditOrchestrator"/> &mdash; not registered in DI on its own.</summary>
-internal sealed class ImageEditPlanner
+internal sealed partial class ImageEditPlanner
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -45,11 +46,26 @@ internal sealed class ImageEditPlanner
             throw new InvalidOperationException("No workflows are available in the catalog.");
         }
 
-        var catalogText = string.Join("\n", workflows.Select(w =>
+        // Filter to workflows that actually accept the supplied image count before the LLM ever
+        // sees the catalog, rather than letting it pick a mismatched workflow and catching that
+        // after the fact — the image count is fixed for the whole session, so there is nothing a
+        // retry could do to fix an out-of-range choice; better to make it unchoosable.
+        var eligibleWorkflows = workflows
+            .Where(w => request.Images.Count >= w.Capabilities.MinImages && request.Images.Count <= w.Capabilities.MaxImages)
+            .ToList();
+        if (eligibleWorkflows.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No workflow in the catalog accepts {request.Images.Count} source image(s). " +
+                $"Available workflows require between {workflows.Min(w => w.Capabilities.MinImages)} " +
+                $"and {workflows.Max(w => w.Capabilities.MaxImages)} images.");
+        }
+
+        var catalogText = string.Join("\n", eligibleWorkflows.Select(w =>
             $"- id: {w.Id}\n  name: {w.DisplayName}\n  description: {w.Description}\n" +
             $"  requiresMask: {w.Capabilities.RequiresMask}\n  images: {w.Capabilities.MinImages}-{w.Capabilities.MaxImages}"));
 
-        var catalogIds = workflows.Select(w => w.Id).ToHashSet();
+        var catalogIds = eligibleWorkflows.Select(w => w.Id).ToHashSet();
         var guidanceText = string.Join("\n", _guidance.GetAll()
             .Where(g => g.WorkflowIds.Any(catalogIds.Contains))
             .Select(g =>
@@ -67,6 +83,10 @@ internal sealed class ImageEditPlanner
             Given the user's source images, optional mask, and instructions, choose the single best-fit
             workflow from the catalog below and rewrite the user's instructions into a detailed,
             unambiguous generation prompt suited to that workflow.
+
+            The catalog below has already been filtered to only the workflows that accept exactly
+            {{request.Images.Count}} source image(s), so every one of them is a valid choice on that
+            count; choose based on fit for the task instead.
 
             Available workflows:
             {{catalogText}}
@@ -104,11 +124,38 @@ internal sealed class ImageEditPlanner
         var raw = await _llm.CompleteAsync(llmRequest, ct);
         var dto = TolerantJson.Parse<PlanDto>(raw, JsonOptions);
 
-        var workflow = workflows.FirstOrDefault(w => w.Id == dto.WorkflowId)
-                       ?? throw new LlmResponseParseException($"LLM selected unknown workflow id '{dto.WorkflowId}'.", raw);
+        // Some providers/models are less reliable at strict JSON-schema adherence than others and
+        // echo stray formatting from the prompt back into the value (observed with MiniMax M3:
+        // catalog entries are rendered as "- id: <id>" and the model occasionally copies the
+        // leading ": " into its answer, e.g. ":flux2-3img" instead of "flux2-3img"). Sanitize
+        // before matching rather than failing on cosmetic noise the model didn't need to get right.
+        // Resolved against eligibleWorkflows, not the full catalog: an id that belongs to some
+        // other workflow the LLM wasn't even offered (hallucinated, or a stale id from an earlier
+        // turn) is exactly as invalid as one that doesn't exist at all.
+        var sanitizedId = SanitizeWorkflowId(dto.WorkflowId);
+        var workflow = eligibleWorkflows.FirstOrDefault(w => w.Id == sanitizedId)
+                       ?? eligibleWorkflows.FirstOrDefault(w => string.Equals(w.Id, sanitizedId, StringComparison.OrdinalIgnoreCase))
+                       ?? throw new LlmResponseParseException(
+                           $"LLM selected workflow id '{dto.WorkflowId}' (sanitized: '{sanitizedId}'), which is not one of " +
+                           $"the workflows offered for {request.Images.Count} image(s).", raw);
+
+        if (string.IsNullOrWhiteSpace(dto.RefinedPrompt))
+        {
+            throw new LlmResponseParseException(
+                $"LLM returned an empty refinedPrompt for workflow '{sanitizedId}'.", raw);
+        }
 
         return (workflow, dto.RefinedPrompt, dto.Reasoning);
     }
+
+    /// <summary>Strips whitespace and any leading/trailing characters that can't legally appear in
+    /// a catalog id (ids are lowercase-hyphenated, e.g. "flux2-3img"), so stray punctuation an LLM
+    /// echoed from the prompt's own formatting doesn't fail an otherwise-correct match.</summary>
+    private static string SanitizeWorkflowId(string rawId) =>
+        WorkflowIdNoisePattern().Replace(rawId.Trim(), "");
+
+    [GeneratedRegex(@"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$")]
+    private static partial Regex WorkflowIdNoisePattern();
 
     private sealed record PlanDto(string WorkflowId, string RefinedPrompt, string Reasoning);
 }

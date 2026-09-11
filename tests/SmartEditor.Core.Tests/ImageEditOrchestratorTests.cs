@@ -100,24 +100,108 @@ public class ImageEditOrchestratorTests
     }
 
     [Fact]
-    public async Task Records_a_mismatch_iteration_and_skips_comfy_when_image_count_is_out_of_range()
+    public async Task Tolerates_stray_punctuation_an_llm_echoes_around_a_workflow_id()
+    {
+        // Observed live with MiniMax M3: the catalog is rendered as "- id: <id>" and the model
+        // occasionally echoes the leading ": " back, e.g. ":wf1" instead of "wf1".
+        var llm = new FakeLlmClient(
+            """{"workflowId":":wf1","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var orchestrator = MakeOrchestrator(llm, comfy);
+
+        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Single(session.History);
+        Assert.Equal("wf1", session.History[0].WorkflowId);
+    }
+
+    [Fact]
+    public async Task Retries_instead_of_failing_the_session_when_a_plan_is_unrecoverably_malformed()
     {
         var llm = new FakeLlmClient(
-            """{"workflowId":"wf-needs-2","refinedPrompt":"combine them","reasoning":"needs two"}""");
+            // Genuinely unrecognizable id and an empty prompt — not just cosmetic noise.
+            """{"workflowId":"","refinedPrompt":"","reasoning":""}""",
+            """{"workflowId":"wf1","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
         var comfy = new FakeComfyUiClient();
-        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow("wf-needs-2", minImages: 2, maxImages: 2));
+        var orchestrator = MakeOrchestrator(llm, comfy, maxIterations: 2);
+
+        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal(2, session.History.Count);
+        Assert.False(session.History[0].Satisfied);
+        Assert.Null(session.History[0].ResultImageBytes);
+        Assert.True(session.History[1].Satisfied);
+        Assert.Equal(1, comfy.CallCount); // the malformed attempt never reached Comfy at all
+    }
+
+    [Fact]
+    public async Task Only_offers_the_llm_workflows_that_accept_the_supplied_image_count()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf-0img","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(
+            FakeWorkflowCatalog.SimpleWorkflow("wf-0img", minImages: 0, maxImages: 0),
+            FakeWorkflowCatalog.SimpleWorkflow("wf-3img", minImages: 3, maxImages: 3));
         var orchestrator = new ImageEditOrchestrator(
             llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
 
-        // MakeRequest() supplies only 1 image, but the workflow requires 2.
-        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+        // No source images supplied — only "wf-0img" fits.
+        var session = await orchestrator.RunAsync(new EditRequest([], "make a blue photo"), progress: null, CancellationToken.None);
 
-        Assert.Equal(EditSessionStatus.ExhaustedAttempts, session.Status);
-        Assert.Single(session.History);
+        var systemPrompt = llm.Requests[0].SystemPrompt;
+        Assert.Contains("wf-0img", systemPrompt);
+        Assert.DoesNotContain("wf-3img", systemPrompt);
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal("wf-0img", session.History[0].WorkflowId);
+    }
+
+    [Fact]
+    public async Task Retries_when_the_llm_selects_a_workflow_outside_the_offered_image_count_range()
+    {
+        var llm = new FakeLlmClient(
+            // Ignores the filtered catalog and asks for the 3-image workflow anyway.
+            """{"workflowId":"wf-3img","refinedPrompt":"combine them","reasoning":"got confused"}""",
+            """{"workflowId":"wf-0img","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(
+            FakeWorkflowCatalog.SimpleWorkflow("wf-0img", minImages: 0, maxImages: 0),
+            FakeWorkflowCatalog.SimpleWorkflow("wf-3img", minImages: 3, maxImages: 3));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 2 }));
+
+        var session = await orchestrator.RunAsync(new EditRequest([], "make a blue photo"), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal(2, session.History.Count);
         Assert.False(session.History[0].Satisfied);
         Assert.Null(session.History[0].ResultImageBytes);
-        Assert.Contains("requires between 2 and 2", session.History[0].JudgeFeedback);
-        Assert.Equal(0, comfy.CallCount);
-        Assert.Null(session.FinalResultBytes);
+        Assert.Equal(1, comfy.CallCount); // the invalid selection never reached Comfy
+        Assert.Equal("wf-0img", session.History[1].WorkflowId);
     }
+
+    [Fact]
+    public async Task Fails_immediately_without_calling_the_llm_when_no_workflow_accepts_the_supplied_image_count()
+    {
+        var llm = new FakeLlmClient(); // no scripted responses — must never be called
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow("wf-3img", minImages: 3, maxImages: 3));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 3 }));
+
+        // No source images supplied, but the only workflow needs 3.
+        var session = await orchestrator.RunAsync(new EditRequest([], "make a blue photo"), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Failed, session.Status);
+        Assert.Contains("0 source image(s)", session.FailureReason);
+        Assert.Empty(llm.Requests);
+        Assert.Equal(0, comfy.CallCount);
+    }
+
 }
