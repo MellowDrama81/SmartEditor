@@ -16,6 +16,7 @@ public partial class AssetsViewModel : TabViewModelBase
     private readonly IEditSessionFactory _sessionFactory;
     private readonly IFilePickerService _filePicker;
     private readonly AssetTagsStore _tagsStore;
+    private readonly AssetThumbnailCache _thumbnailCache;
 
     private CancellationTokenSource? _refreshCts;
     private string? _nextCursor;
@@ -41,12 +42,14 @@ public partial class AssetsViewModel : TabViewModelBase
 
     // The folder-index emoji prefix is purely cosmetic: it makes the one permanent tab read as
     // visually distinct from the numbered, closable "Tab N" editor tabs at a glance.
-    public AssetsViewModel(IEditSessionFactory sessionFactory, IFilePickerService filePicker, AssetTagsStore tagsStore)
+    public AssetsViewModel(
+        IEditSessionFactory sessionFactory, IFilePickerService filePicker, AssetTagsStore tagsStore, AssetThumbnailCache thumbnailCache)
         : base("\U0001F5C2 Assets", isClosable: false)
     {
         _sessionFactory = sessionFactory;
         _filePicker = filePicker;
         _tagsStore = tagsStore;
+        _thumbnailCache = thumbnailCache;
     }
 
     partial void OnTagFilterChanged(string value) => ApplyFilter();
@@ -127,7 +130,11 @@ public partial class AssetsViewModel : TabViewModelBase
 
         // Thumbnails for just this page load in the background after the page itself is up, so the
         // grid (with per-item spinners) appears immediately rather than waiting on every fetch.
-        await LoadThumbnailsAsync(comfy, newItems, ct);
+        // Deliberately NOT awaited: RefreshCommand/LoadMoreCommand only stay "busy" (disabling the
+        // button) for as long as this method's own Task is running, and thumbnails can take a while
+        // to trickle in one at a time — awaiting them here left Refresh looking permanently disabled
+        // long after the page's asset list had actually finished loading.
+        _ = LoadThumbnailsAsync(comfy, newItems, ct);
     }
 
     private async Task LoadThumbnailsAsync(IComfyUiClient comfy, IReadOnlyList<AssetItemViewModel> items, CancellationToken ct)
@@ -145,8 +152,16 @@ public partial class AssetsViewModel : TabViewModelBase
 
             try
             {
+                var cached = await _thumbnailCache.TryGetAsync(item.Filename, ct);
+                if (cached is not null)
+                {
+                    item.SetBytes(cached);
+                    continue;
+                }
+
                 var bytes = await comfy.DownloadInputAssetAsync(item.Filename, ct);
                 item.SetBytes(bytes);
+                await _thumbnailCache.SaveAsync(item.Filename, bytes, ct);
             }
             catch (OperationCanceledException)
             {
@@ -181,6 +196,7 @@ public partial class AssetsViewModel : TabViewModelBase
                 var item = new AssetItemViewModel(new AssetInfo(name, file.Name), _tagsStore);
                 item.SetBytes(file.Bytes);
                 Assets.Insert(0, item);
+                _ = _thumbnailCache.SaveAsync(name, file.Bytes, CancellationToken.None);
             }
             ApplyFilter();
             StatusMessage = $"Uploaded {picked.Count} file(s).";
@@ -225,6 +241,10 @@ public partial class AssetsViewModel : TabViewModelBase
         item.SetBytes(bytes);
         Assets.Insert(0, item);
         ApplyFilter();
+
+        // Already have the bytes right here — seed the cache so a later Refresh (a fresh
+        // AssetItemViewModel instance for the same filename) doesn't re-download them.
+        _ = _thumbnailCache.SaveAsync(filename, bytes, CancellationToken.None);
     }
 
     [RelayCommand]

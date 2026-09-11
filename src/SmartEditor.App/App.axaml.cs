@@ -60,6 +60,7 @@ public partial class App : Application
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddSingleton<AppSettingsStore>();
         services.AddSingleton<AssetTagsStore>();
+        services.AddSingleton<AssetThumbnailCache>();
         services.AddSingleton<IFilePickerService, AvaloniaFilePickerService>();
         services.AddSingleton<IWorkflowCatalog>(_ =>
             new FileWorkflowCatalog(Path.Combine(AppContext.BaseDirectory, "Workflows")));
