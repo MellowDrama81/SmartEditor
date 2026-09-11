@@ -1,0 +1,298 @@
+[
+  {
+    "id": "z-image-turbo",
+    "displayName": "Z-Image Turbo",
+    "workflowIds": ["z-image-turbo"],
+    "bestFor": [
+      "Fast, cheap text-to-image drafts and iteration where no reference photo exists",
+      "Photorealistic portraits, headshots, and editorial-style character art with natural skin and studio lighting",
+      "Legible bilingual (English/Chinese) in-image text at moderate complexity"
+    ],
+    "strugglesWith": [
+      "Wide artistic style diversity — it leans photorealistic even for stylized asks",
+      "Crowded scenes with multiple background people (face distortion is a known failure mode)",
+      "Very long, complex text layouts (the non-Turbo Z-Image variant handles these better)"
+    ],
+    "sources": [
+      "https://getimg.ai/blog/z-image-turbo-review-how-this-small-ai-model-delivers-big-results",
+      "https://budgetpixel.com/models/z-image-turbo"
+    ]
+  },
+  {
+    "id": "flux2-dev",
+    "displayName": "FLUX.2 dev",
+    "workflowIds": ["flux2", "flux2-0img", "flux2-2img", "flux2-3img", "flux2-4img", "flux2-5img", "flux2-6img", "flux2-7img", "flux2-8img", "flux2-inpaint"],
+    "bestFor": [
+      "Photorealistic product, fashion, and editorial shots where lighting, reflections, and materials must read as physically plausible",
+      "Long, detail-dense prompts with many bound attributes (exact colors, counts, positions) that need literal, faithful following",
+      "Reference-guided generation used as a style/composition guide rather than a strict pixel edit",
+      "Masked-region edits (`flux2-inpaint`) where every unmasked pixel must be preserved exactly — the result is composited back over the original, so only the selected region actually changes"
+    ],
+    "strugglesWith": [
+      "Deliberately abstract, painterly, or highly stylized requests — it has a strong bias back toward photorealism and will often keep the subject photoreal even when told to go stylized",
+      "Multi-step spatial/logical reasoning (\"put the object left of the red one behind the blue one\") — lands mid-pack on visual-logic benchmarks",
+      "Portraits can show \"Flux shine\": overly smooth skin and hyper-idealized facial structure when a candid, imperfect look is wanted"
+    ],
+    "sources": [
+      "https://medium.com/@leucopsis/flux-2-pro-review-and-comparison-with-midjourney-v7-and-with-nano-banana-pro-337224a5551f",
+      "https://theplanettools.ai/tools/flux-2",
+      "https://bfl.ai/blog/flux-2"
+    ]
+  },
+  {
+    "id": "flux2-klein",
+    "displayName": "FLUX.2 Klein 9B",
+    "workflowIds": [
+      "flux2-klein-edit-single", "flux2-klein-edit-double", "flux2-klein-inpaint-reference",
+      "flux2-klein-0img", "flux2-klein-3img", "flux2-klein-4img", "flux2-klein-5img",
+      "flux2-klein-6img", "flux2-klein-7img", "flux2-klein-8img"
+    ],
+    "bestFor": [
+      "Fast, low-latency image edits (1-2 seconds) where near-Dev quality is wanted without Dev's cost/latency",
+      "Identity-preserving edits and face-swap-style reference transfer, where it outperforms comparable small/fast models",
+      "Lighter-weight multi-reference edits (logo placement, object transfer between images) on more constrained hardware/turnaround budgets"
+    ],
+    "strugglesWith": [
+      "Nuanced artistic/stylistic tasks — noticeably behind Krea 2 and Qwen-Image for pure style work",
+      "Occasionally odd or brittle prompt-following behavior reported by users compared to the full Dev model",
+      "No official documented maximum reference-image count, so behavior at the high end (6-8 images) is less predictable than for models with a stated ceiling"
+    ],
+    "sources": [
+      "https://medium.com/diffusion-doodles/flux-2-klein-shrinking-flux-2-dev-2258b1078e75",
+      "https://myaiforce.com/krea-2-vs-flux-2-klein/",
+      "https://fotomanyagi.com/en/blog/flux-2-models-guide"
+    ]
+  },
+  {
+    "id": "krea2-turbo",
+    "displayName": "Krea 2 Turbo (style reference)",
+    "workflowIds": ["krea2-style-reference", "krea2-style-reference-2img", "krea2-style-reference-3img"],
+    "bestFor": [
+      "Aesthetically cohesive, mood-driven imagery — dramatic lighting, atmosphere, and editorial/magazine-style composition read as intentional",
+      "Style-reference-driven generation across illustration, anime, watercolor, and concept-art styles",
+      "Creative-direction and marketing/fashion work where visual mood matters more than literal accuracy"
+    ],
+    "strugglesWith": [
+      "Legible in-image text — weakest of the covered models for text rendering, avoid for any workflow whose output needs readable typography",
+      "Complex, multi-part instructional prompts with many discrete constraints",
+      "Technical/product photography where exact specifications (dimensions, exact colors, precise geometry) must match — this workflow's bundled LoRA was trained for 1-2 references, so 3 exceeds its documented training range",
+      "Chaining more than ~3 style references — prefer 'krea2-api' below, which is Krea's own hosted model built for that"
+    ],
+    "sources": [
+      "https://krea2.net/krea-2-review",
+      "https://www.mindstudio.ai/blog/what-is-krea-2-k2-aesthetic-ai-image-model",
+      "https://www.krea.ai/blog/krea-2-technical-report"
+    ]
+  },
+  {
+    "id": "krea2-api",
+    "displayName": "Krea 2 (hosted API Node) — style reference",
+    "workflowIds": ["api-krea2-style-reference-1img", "api-krea2-style-reference-2img", "api-krea2-style-reference-3img"],
+    "bestFor": [
+      "The same aesthetic/mood-driven style-reference generation as the local Krea 2 Turbo LoRA above, but using Krea's own hosted model directly — no LoRA-training-range limitation, and each reference carries its own strength (including negative weights to push away from a reference's aesthetic)",
+      "Chaining several style references at once — the underlying node documents support for up to 10 chained references, well past the local LoRA's 1-2 trained range",
+      "Cases where 'Krea 2 Large' full-quality output (vs. the Turbo distillation used locally) is worth the added hosted latency/cost"
+    ],
+    "strugglesWith": [
+      "It's a paid, hosted partner node — requires separately authorized/credited Krea 2 access on the Comfy account, so it's unsuitable when the user has no such access configured",
+      "True 'Moodboards' (Krea's 250-image style-analysis feature) is NOT reachable this way — it requires a moodboard first created in Krea's own web app and referenced by UUID, which this app's own upload flow cannot produce; only the direct style_reference chain (this workflow) is buildable from user-uploaded images",
+      "Same text-rendering weakness as the local Krea 2 workflow — avoid for anything needing legible in-image typography"
+    ],
+    "sources": [
+      "https://www.krea.ai/blog/krea-2-api-launch",
+      "https://docs.krea.ai/developers/krea-2/moodboards"
+    ]
+  },
+  {
+    "id": "qwen-image-edit-2511",
+    "displayName": "Qwen-Image-Edit 2511",
+    "workflowIds": [
+      "qwen-image-edit-2511", "qwen-image-edit-2511-1img", "qwen-image-edit-2511-3img",
+      "qwen-image-edit-2511-character-pose", "qwen-image-edit-2511-character-prepared-pose",
+      "qwen-image-edit-2511-inpainting"
+    ],
+    "bestFor": [
+      "Multi-image and multi-person edits that must hold composition/identity together across a back-and-forth editing session, not just a single pass",
+      "Character-identity-preserving edits from a reference portrait (clothing changes, pose changes, imaginative edits) without breaking the rest of the scene",
+      "In-image text editing/replacement in Chinese and English while preserving original font, size, and styling — strong for packaging, banners, and UI mockups",
+      "Structure-aware edits that need to preserve unchanged regions precisely (product design, spatial fidelity)"
+    ],
+    "strugglesWith": [
+      "Needs a lower CFG than typical diffusion defaults (around 4-5, not 7-8) — higher values introduce artifacts, so downstream prompt/parameter choices matter",
+      "Improvement over single-subject edits versus its predecessor (2509) is incremental — not a strong differentiator if the task is a simple one-subject edit",
+      "Hard-capped at 3 reference images by the TextEncodeQwenImageEditPlus node this workflow uses; do not route requests needing 4+ distinct references here"
+    ],
+    "sources": [
+      "https://medium.com/@social_18794/qwen-image-edit-2511-the-first-real-upgrade-that-makes-ai-editing-feel-production-ready-5d229d44a25f",
+      "https://www.alibabacloud.com/blog/qwen-image-edit-2511-improve-consistency_602762",
+      "https://www.apatero.com/blog/qwen-edit-2511-complete-guide-image-editing-2025"
+    ]
+  },
+  {
+    "id": "qwen-instantx-union-controlnet",
+    "displayName": "Qwen Image + InstantX Union ControlNet",
+    "workflowIds": [
+      "qwen-instantx-union-controlnet", "qwen-image-instantx-inpainting", "qwen-dwpose-union-controlnet",
+      "qwen-canny-union-controlnet", "qwen-depth-union-controlnet", "qwen-lineart-union-controlnet", "qwen-normal-union-controlnet"
+    ],
+    "bestFor": [
+      "Generating a brand-new image under strong structural control from a single prepared guide (depth map, Canny edge map, pose skeleton, or soft-edge map) rather than editing an existing photo",
+      "Depth-guided control specifically — keeps pose and facial structure most consistent among the four supported control modes (canny, soft edge, depth, pose)",
+      "One-shot photo-to-guide-to-generate shortcuts exist for pose, canny, depth, lineart, and surface-normal (the last two are an off-label but live-verified-working use of the soft-edge/depth control modes) — prefer these over the standalone extractor + generic-guide two-step when the source is a plain photo, not an already-prepared guide"
+    ],
+    "strugglesWith": [
+      "Anything requiring the source image's own visual identity/style, not just its structure — this is a guide-image tool, not a reference/edit tool",
+      "Preserving small in-image text or fine typography faithfully unless it is explicitly called out in the prompt",
+      "Combining more than one control type at once — the model card documents that as unsupported outside an experimental diffusers path",
+      "Narrower control-type coverage than 'qwen-fun-union-controlnet' below (4 types vs. 6+inpainting) — prefer that workflow for MLSD or scribble guides, or when a single model should also handle inpainting"
+    ],
+    "sources": [
+      "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union/blob/main/README.md",
+      "https://medium.com/diffusion-doodles/qwen-image-controlnets-53f8703aba42",
+      "https://blog.comfy.org/p/day-1-support-of-qwen-image-instantx"
+    ]
+  },
+  {
+    "id": "qwen-fun-union-controlnet",
+    "displayName": "Qwen Image + PAI Fun-Controlnet-Union",
+    "workflowIds": ["qwen-fun-union-controlnet"],
+    "bestFor": [
+      "The same guide-image-driven generation as the InstantX Union ControlNet, but with broader control-type coverage: canny, HED/soft-edge, depth, pose, MLSD (straight-line/architectural), and scribble guides, plus its own inpainting mode, all from one model",
+      "Architectural, product, or interior-design guides using MLSD (straight-line) control, which the InstantX Union model does not support at all",
+      "Cases where the source guide's control type is unknown or mixed — this model's broader coverage makes it the safer default among the two Qwen union ControlNets"
+    ],
+    "strugglesWith": [
+      "Newer and less battle-tested than the InstantX Union model (released 2025-12/2026-02 per its versioned filename) — treat outputs with slightly more scrutiny until more real-world use accumulates",
+      "Same fundamental limits as any guide-image tool: it does not carry over the source image's own visual identity/style, only its structure",
+      "Live-verified to load and execute on this Comfy Cloud account, but not yet benchmarked head-to-head against InstantX Union for output quality on any single control type"
+    ],
+    "sources": [
+      "https://huggingface.co/alibaba-pai/Qwen-Image-2512-Fun-Controlnet-Union",
+      "https://huggingface.co/SceneWorks/qwen-image-2512-fun-controlnet-union"
+    ]
+  },
+  {
+    "id": "qwen-diffsynth-controlnet",
+    "displayName": "Qwen Image + DiffSynth-Studio Blockwise ControlNet (model-patch)",
+    "workflowIds": ["qwen-diffsynth-canny-controlnet", "qwen-diffsynth-depth-controlnet", "qwen-diffsynth-inpaint"],
+    "bestFor": [
+      "A third option for canny/depth/inpaint guide-driven Qwen generation, using a different mechanism than the two Union ControlNets: the guide is baked into the diffusion model itself as a patch (`QwenImageDiffsynthControlnet`/`ModelPatchLoader`), not applied as an external conditioning step",
+      "Cases where the Union ControlNets' output doesn't match the desired structural fidelity — worth trying as an alternative on the same guide image since it's an independently-trained mechanism",
+      "The inpaint variant specifically: masked-region editing baked into the model patch, then composited back over the original so unmasked pixels are preserved exactly, same guarantee as the other masked workflows"
+    ],
+    "strugglesWith": [
+      "Only three single-purpose patches exist (canny, depth, inpaint) — no pose, MLSD, or scribble support, unlike either Union ControlNet; route those control types to `qwen-instantx-union-controlnet` or `qwen-fun-union-controlnet` instead",
+      "Not a true ControlNet by the model's own documentation — a model patch that mimics one, so behavior can differ subtly from the Union ControlNets on the same guide",
+      "Newer, narrower community tooling with less real-world track record than the Union ControlNets — the inpaint variant's mask input in particular needed non-obvious wiring to get right (uninverted raw alpha mask, not the inverted convention the other masked workflows use), so treat any future edits to this workflow with extra care"
+    ],
+    "sources": [
+      "https://huggingface.co/DiffSynth-Studio/Qwen-Image-Blockwise-ControlNet-Canny",
+      "https://blog.comfy.org/p/comfyui-now-supports-qwen-image-controlnet"
+    ]
+  },
+  {
+    "id": "seedream-4-5",
+    "displayName": "ByteDance Seedream 4.5/5.0 (hosted API)",
+    "workflowIds": [
+      "api-bytedance-seedream4", "api-bytedance-seedream4-2img", "api-bytedance-seedream4-3img",
+      "api-bytedance-seedream4-4img", "api-bytedance-seedream4-5img", "api-bytedance-seedream4-6img",
+      "api-bytedance-seedream4-7img", "api-bytedance-seedream4-8img"
+    ],
+    "bestFor": [
+      "Dense, high-fidelity in-image text and typography — including handwriting and artistic/stylized text, a clear strength versus most competitors",
+      "Multi-source compositing from several reference images at once: product swaps, element transfer between images, while preserving depth, perspective, and lighting consistency",
+      "General subject recognition and reference fidelity when combining many distinct source photos into one coherent scene"
+    ],
+    "strugglesWith": [
+      "Reasoning-intensive edits that need the model to infer real-world context or learn from example-based instructions — that is Seedream 5.0's differentiator, not 4.5's",
+      "This is a paid, hosted partner node — requires separately authorized/credited Seedream access on the Comfy account, so it is unsuitable when the user has no such access configured",
+      "Exact deployment limits (resolution ceiling, aspect ratios, latency) are not fully documented by the vendor, so treat edge-case requests (extreme aspect ratios, very high resolution) cautiously"
+    ],
+    "sources": [
+      "https://morphic.com/resources/models/seedream-4-5",
+      "https://www.vp-land.com/stories/bytedance-s-seedream-4-5-levels-up-text-and-quality",
+      "https://wavespeed.ai/blog/posts/seedream-4-5-complete-guide-2026/"
+    ]
+  },
+  {
+    "id": "nano-banana-pro",
+    "displayName": "Nano Banana Pro / Gemini 3 Pro Image (hosted API)",
+    "workflowIds": [
+      "api-nano-banana-pro", "api-nano-banana-pro-0img", "api-nano-banana-pro-1img",
+      "api-nano-banana-pro-3img", "api-nano-banana-pro-4img", "api-nano-banana-pro-5img",
+      "api-nano-banana-pro-6img", "api-nano-banana-pro-7img", "api-nano-banana-pro-8img"
+    ],
+    "bestFor": [
+      "The best-in-class choice whenever the output needs correctly spelled, legible in-image text — short taglines through long multilingual passages, with font/texture/calligraphy control",
+      "Consistent multi-image blending and accurate identity preservation across multiple subjects at once (documented up to five people)",
+      "Practical, information-dense outputs: infographics, diagrams, multilingual localized content, high-resolution (up to 4K) print-ready output"
+    ],
+    "strugglesWith": [
+      "Deliberately surreal, abstract, or highly stylized prompts — it has a strong RLHF-driven bias toward realism and tends to \"correct\" surreal intent back toward the photorealistic median",
+      "This is a paid, hosted partner node — requires separately authorized/credited Gemini image access on the Comfy account",
+      "The exact image-count ceiling and per-surface sub-caps (objects vs. people) vary by hosting surface, so treat very high reference counts as best-effort, not guaranteed"
+    ],
+    "sources": [
+      "https://minimaxir.com/2025/12/nano-banana-pro/",
+      "https://blog.google/innovation-and-ai/products/nano-banana-pro/",
+      "https://techbullion.com/inside-nano-banana-pro-how-gemini-3-pro-image-closes-the-gaps-that-held-ai-imagery-back/"
+    ]
+  },
+  {
+    "id": "control-guide-extractors",
+    "displayName": "DWPose / Canny / Lineart / Depth Anything V2 / BAE control-guide extractors",
+    "workflowIds": [
+      "dwpose-extract-pose-guide", "canny-extract-control-guide", "lineart-extract-control-guide",
+      "depth-extract-control-guide", "normal-extract-control-guide"
+    ],
+    "bestFor": [
+      "Producing a single-purpose structural guide image (pose skeleton, edge map, lineart, depth map, or normal map) from one source photo, to feed into a ControlNet generation workflow afterward",
+      "Isolating structure/pose from a source photo when its style, color, or identity should NOT carry over into the next generation step",
+      "Deterministic, fast, single-image preprocessing — these are not generative/creative choices and should be selected only as a preparation step, not as the final output a user is asking for"
+    ],
+    "strugglesWith": [
+      "They do not generate a new image from a prompt at all — never select one of these when the user is asking for a finished edited or generated picture",
+      "Multi-image input is not supported — each is a single-image tool by design",
+      "Extraction quality depends entirely on the clarity of the source photo (occlusion, low contrast, or cluttered backgrounds degrade the guide)"
+    ],
+    "sources": [
+      "docs/comfy-cloud-image-models.md"
+    ]
+  },
+  {
+    "id": "upscale-with-model",
+    "displayName": "4x-UltraSharp upscaler",
+    "workflowIds": ["upscale-with-model"],
+    "bestFor": [
+      "Increasing the resolution of an existing image 4x while sharpening detail, e.g. before printing or when the user asks to \"make this bigger\" / \"upscale\" / \"higher resolution\" with no other edit requested",
+      "A finishing step after a generation workflow when the user wants more detail or a larger output, not a different picture",
+      "Deterministic, prompt-free, fast — no generation model or creative interpretation involved at all"
+    ],
+    "strugglesWith": [
+      "Any request that also wants content changed — it cannot add, remove, or alter anything, only sharpen/enlarge what's already there. Route content changes to a generation workflow instead (possibly before or after this one)",
+      "Multi-image input is not supported — single image in, single image out",
+      "Already-low-quality or heavily compressed source images: it sharpens detail that's present, it doesn't invent detail that was lost"
+    ],
+    "sources": [
+      "src/SmartEditor.Core/Workflows/upscale-with-model.meta.json"
+    ]
+  },
+  {
+    "id": "remove-background",
+    "displayName": "Rembg background removal",
+    "workflowIds": ["remove-background"],
+    "bestFor": [
+      "Cutting a subject out onto a transparent background — \"remove the background\", \"isolate the product/person\", or prep work before compositing into another image (e.g. as a reference for one of the multi-image generation workflows)",
+      "General-purpose subjects (the bundled graph uses the isnet-general-use model); works for products, people, and most everyday objects",
+      "Deterministic, prompt-free, fast — no generation model or creative interpretation involved at all"
+    ],
+    "strugglesWith": [
+      "Fine, wispy detail (individual hair strands, fur, semi-transparent materials like glass or smoke) — general-purpose background removers commonly leave soft/fuzzy edges or halos on these",
+      "Any request that also wants content changed or a new background painted in — this only removes, it doesn't generate or replace; pair with a generation workflow for a full \"replace the background\" request",
+      "Multi-image input is not supported — single image in, single image out"
+    ],
+    "sources": [
+      "src/SmartEditor.Core/Workflows/remove-background.meta.json"
+    ]
+  }
+]

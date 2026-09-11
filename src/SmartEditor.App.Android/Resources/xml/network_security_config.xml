@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ComfyUI and LLM server hosts are entered by the user at runtime (e.g. a plain-http
+     ComfyUI instance on the local network), so they can't be allow-listed at build time.
+     Cleartext traffic is permitted app-wide as a deliberate tradeoff for this LAN-tool use case;
+     the Settings screen warns the user when a configured URL is http://. -->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

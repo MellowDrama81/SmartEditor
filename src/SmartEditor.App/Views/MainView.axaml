@@ -1,0 +1,163 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:SmartEditor.App.Controls"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:CompileBindings="False"
+             x:Class="SmartEditor.App.Views.MainView">
+
+  <Grid>
+    <!-- Main editor content -->
+    <Grid RowDefinitions="Auto,*" Margin="16">
+      <DockPanel Grid.Row="0" Margin="0,0,0,12">
+        <Button Content="Settings" DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" />
+        <TextBlock Text="SmartEditor" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+      </DockPanel>
+
+      <ScrollViewer Grid.Row="1">
+        <StackPanel Spacing="12" DataContext="{Binding Editor}">
+
+          <TextBlock Text="Source images (0-8)" FontWeight="SemiBold" />
+          <ItemsControl ItemsSource="{Binding Images}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Width="96" Height="96" Margin="4" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                  <Grid>
+                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                    <Button Content="✕" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="4,0"
+                            Command="{Binding $parent[ItemsControl].DataContext.RemoveImageCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Add images…" Command="{Binding AddImagesCommand}" />
+            <Button Content="Paint mask on image #1" Command="{Binding OpenMaskEditorCommand}" IsEnabled="{Binding CanEditMask}" />
+            <Button Content="Clear mask" Command="{Binding ClearMaskCommand}" IsVisible="{Binding HasMask}" />
+            <TextBlock Text="Mask set ✓" VerticalAlignment="Center" IsVisible="{Binding HasMask}" Foreground="ForestGreen" />
+          </StackPanel>
+
+          <TextBlock Text="Prompt" FontWeight="SemiBold" />
+          <TextBox Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="90"
+                    PlaceholderText="Describe the edit you want…" />
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Run" Command="{Binding RunCommand}" />
+            <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
+            <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          </StackPanel>
+
+          <TextBlock Text="Iteration history" FontWeight="SemiBold" />
+          <ItemsControl ItemsSource="{Binding History}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Margin="0,4" Padding="8">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Image Source="{Binding ResultImage}" Width="80" Height="80" Stretch="UniformToFill" />
+                    <StackPanel MaxWidth="500">
+                      <TextBlock FontWeight="SemiBold">
+                        <Run Text="Iteration " /><Run Text="{Binding Index}" /><Run Text=" — workflow: " /><Run Text="{Binding WorkflowId}" />
+                      </TextBlock>
+                      <TextBlock Text="{Binding RefinedPrompt}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding JudgeFeedback}" TextWrapping="Wrap" FontStyle="Italic" Opacity="0.8" />
+                      <TextBlock Text="Satisfied" Foreground="ForestGreen" IsVisible="{Binding Satisfied}" FontWeight="Bold" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Text="Result" FontWeight="SemiBold" IsVisible="{Binding HasFinalResult}" />
+          <Image Source="{Binding FinalResult}" MaxHeight="420" Stretch="Uniform" HorizontalAlignment="Left"
+                 IsVisible="{Binding HasFinalResult}" />
+          <Button Content="Save result…" Command="{Binding SaveResultCommand}" IsVisible="{Binding HasFinalResult}" />
+
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- Mask editor overlay -->
+    <Grid Background="#AA000000" IsVisible="{Binding Editor.IsMaskEditorOpen}">
+      <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="16" CornerRadius="6"
+              MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Paint mask on the first image" FontWeight="Bold" FontSize="16" />
+          <Viewbox MaxWidth="480" MaxHeight="480" Stretch="Uniform">
+            <Grid Width="{Binding Editor.FirstImage.Thumbnail.PixelSize.Width}"
+                  Height="{Binding Editor.FirstImage.Thumbnail.PixelSize.Height}">
+              <Image Source="{Binding Editor.FirstImage.Thumbnail}" />
+              <controls:MaskCanvas Name="MaskCanvasControl"
+                                    MaskSize="{Binding Editor.FirstImage.Thumbnail.PixelSize}"
+                                    BrushRadius="{Binding Editor.BrushRadius}"
+                                    IsErasing="{Binding Editor.IsErasing}"
+                                    Opacity="0.55" />
+            </Grid>
+          </Viewbox>
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="Brush size" VerticalAlignment="Center" />
+            <Slider Minimum="4" Maximum="120" Value="{Binding Editor.BrushRadius}" Width="160" VerticalAlignment="Center" />
+            <ToggleButton Content="Erase" IsChecked="{Binding Editor.IsErasing}" />
+            <Button Content="Clear" Click="OnClearMaskCanvasClick" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Cancel" Command="{Binding Editor.CloseMaskEditorCommand}" />
+            <Button Content="Done" Click="OnConfirmMaskClick" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Settings overlay -->
+    <Grid Background="#AA000000" IsVisible="{Binding IsSettingsOpen}">
+      <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="20" CornerRadius="6"
+              MaxWidth="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="6" DataContext="{Binding Settings}">
+          <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" Margin="0,0,0,8" />
+
+          <CheckBox Content="Use Comfy Cloud (cloud.comfy.org)" IsChecked="{Binding IsComfyCloud}" />
+
+          <TextBlock Text="ComfyUI server URL" Margin="0,8,0,0" />
+          <TextBox Text="{Binding ComfyUiBaseUrl}" PlaceholderText="http://192.168.1.50:8188" />
+
+          <StackPanel IsVisible="{Binding IsComfyCloud}">
+            <TextBlock Text="Comfy Cloud API key (stored locally, unencrypted)" Margin="0,8,0,0" />
+            <TextBox Text="{Binding ComfyCloudApiKey}" PasswordChar="•" />
+          </StackPanel>
+
+          <TextBlock Text="LLM base URL (OpenAI-compatible — OpenRouter, DeepInfra, …)" Margin="0,8,0,0" />
+          <TextBox Text="{Binding LlmBaseUrl}" PlaceholderText="https://openrouter.ai/api/v1" />
+
+          <TextBlock Text="LLM API key (stored locally, unencrypted)" Margin="0,8,0,0" />
+          <TextBox Text="{Binding LlmApiKey}" PasswordChar="•" />
+
+          <TextBlock Text="LLM model id" Margin="0,8,0,0" />
+          <TextBox Text="{Binding LlmModel}" PlaceholderText="e.g. anthropic/claude-sonnet-4.5" />
+
+          <CheckBox Content="Provider reliably supports strict JSON-schema output" IsChecked="{Binding LlmSupportsJsonSchema}" Margin="0,8,0,0" />
+
+          <TextBlock Text="Max iterations" Margin="0,8,0,0" />
+          <Slider Minimum="1" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding MaxIterations}" />
+          <TextBlock Text="{Binding MaxIterations}" HorizontalAlignment="Right" />
+
+          <TextBlock Text="{Binding CleartextWarning}" Foreground="OrangeRed" TextWrapping="Wrap"
+                     IsVisible="{Binding HasCleartextWarning}" Margin="0,8,0,0" />
+
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Command="{Binding $parent[Grid].DataContext.CancelSettingsCommand}" />
+            <Button Content="Save" Command="{Binding $parent[Grid].DataContext.SaveSettingsCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

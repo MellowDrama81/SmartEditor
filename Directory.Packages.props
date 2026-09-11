@@ -1,0 +1,32 @@
+<Project>
+    <!-- https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management -->
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- Avalonia packages -->
+        <!-- Important: keep version in sync! -->
+        <PackageVersion Include="Avalonia" Version="12.1.1" />
+        <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+        <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+        <PackageVersion Include="Avalonia.Desktop" Version="12.1.1" />
+        <PackageVersion Include="Avalonia.Android" Version="12.1.1" />
+        <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+
+        <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+
+        <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
+
+        <!-- SmartEditor.Core / DI / HTTP / config -->
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+        <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
+
+        <!-- Tests -->
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+        <PackageVersion Include="xunit" Version="2.9.3" />
+        <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    </ItemGroup>
+</Project>

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmartEditor.Core/SmartEditor.Core.csproj" />
+    <Project Path="src/SmartEditor.App/SmartEditor.App.csproj" />
+    <Project Path="src/SmartEditor.App.Desktop/SmartEditor.App.Desktop.csproj" />
+    <Project Path="src/SmartEditor.App.Android/SmartEditor.App.Android.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmartEditor.Core.Tests/SmartEditor.Core.Tests.csproj" />
+  </Folder>
+</Solution>
