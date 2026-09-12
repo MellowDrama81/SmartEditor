@@ -11,9 +11,15 @@ public interface IImageEditOrchestrator
     /// added to the editor, or picked from the asset library in the first place) &mdash; seeds the
     /// same dedupe mechanism normally built up iteration-to-iteration within one run, so a run's
     /// very first iteration doesn't re-upload something that's already there.</param>
+    /// <param name="forcedWorkflow">When set, skips the LLM's own workflow choice and uses this one
+    /// for every iteration &mdash; e.g. the user picked a specific workflow in the UI instead of
+    /// leaving it to "let the LLM decide". The LLM still refines the prompt and image order for it.
+    /// Must itself accept <paramref name="request"/>'s image count and mask, the same rule
+    /// <see cref="Services.WorkflowEligibility"/> applies when a UI offers workflows to pick from.</param>
     Task<EditSession> RunAsync(
         EditRequest request,
         IProgress<EditIteration>? progress,
         CancellationToken ct,
-        IReadOnlyDictionary<Guid, string>? alreadyUploaded = null);
+        IReadOnlyDictionary<Guid, string>? alreadyUploaded = null,
+        WorkflowDefinition? forcedWorkflow = null);
 }

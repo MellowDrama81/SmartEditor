@@ -208,6 +208,121 @@ public class ImageEditOrchestratorTests
     }
 
     [Fact]
+    public async Task Only_offers_mask_workflows_when_a_mask_is_provided()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf-mask","refinedPrompt":"remove the object","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(
+            FakeWorkflowCatalog.SimpleWorkflow("wf-mask", requiresMask: true),
+            FakeWorkflowCatalog.SimpleWorkflow("wf-plain", requiresMask: false));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
+
+        var image = new SourceImage("in.png", TestImages.TinyPng);
+        var request = new EditRequest([image], "remove the object", new MaskImage(TestImages.TinyPng));
+        var session = await orchestrator.RunAsync(request, progress: null, CancellationToken.None);
+
+        var systemPrompt = llm.Requests[0].SystemPrompt;
+        Assert.Contains("wf-mask", systemPrompt);
+        Assert.DoesNotContain("wf-plain", systemPrompt);
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal("wf-mask", session.History[0].WorkflowId);
+    }
+
+    [Fact]
+    public async Task Reorders_images_per_the_llms_declared_slot_mapping_before_running_the_workflow()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"combine them","reasoning":"fits the ask","imageOrder":[1,0]}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow(minImages: 2, maxImages: 2));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
+
+        var first = new SourceImage("first.png", TestImages.TinyPng);
+        var second = new SourceImage("second.png", TestImages.TinyPng);
+        var request = new EditRequest([first, second], "combine them");
+
+        var session = await orchestrator.RunAsync(request, progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        // imageOrder [1,0] means slot 0 = the second supplied image, slot 1 = the first — reversed
+        // from how the user actually added them.
+        Assert.Equal([second, first], comfy.ReceivedRequests[0].Images);
+    }
+
+    [Fact]
+    public async Task Defaults_to_the_original_image_order_when_the_llm_omits_imageOrder()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"combine them","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow(minImages: 2, maxImages: 2));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
+
+        var first = new SourceImage("first.png", TestImages.TinyPng);
+        var second = new SourceImage("second.png", TestImages.TinyPng);
+        var request = new EditRequest([first, second], "combine them");
+
+        var session = await orchestrator.RunAsync(request, progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal([first, second], comfy.ReceivedRequests[0].Images);
+    }
+
+    [Fact]
+    public async Task Retries_instead_of_failing_the_session_when_imageOrder_is_not_a_valid_permutation()
+    {
+        var llm = new FakeLlmClient(
+            // Not a permutation of [0, 1] — index 0 repeated, index 1 never used.
+            """{"workflowId":"wf1","refinedPrompt":"combine them","reasoning":"r1","imageOrder":[0,0]}""",
+            """{"workflowId":"wf1","refinedPrompt":"combine them","reasoning":"r2","imageOrder":[1,0]}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow(minImages: 2, maxImages: 2));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 2 }));
+
+        var first = new SourceImage("first.png", TestImages.TinyPng);
+        var second = new SourceImage("second.png", TestImages.TinyPng);
+        var request = new EditRequest([first, second], "combine them");
+
+        var session = await orchestrator.RunAsync(request, progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal(2, session.History.Count);
+        Assert.False(session.History[0].Satisfied);
+        Assert.Equal(1, comfy.CallCount); // the invalid imageOrder never reached Comfy
+    }
+
+    [Fact]
+    public async Task Only_offers_non_mask_workflows_when_no_mask_is_provided()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf-plain","refinedPrompt":"make it blue","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(
+            FakeWorkflowCatalog.SimpleWorkflow("wf-mask", requiresMask: true),
+            FakeWorkflowCatalog.SimpleWorkflow("wf-plain", requiresMask: false));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
+
+        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+
+        var systemPrompt = llm.Requests[0].SystemPrompt;
+        Assert.Contains("wf-plain", systemPrompt);
+        Assert.DoesNotContain("wf-mask", systemPrompt);
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal("wf-plain", session.History[0].WorkflowId);
+    }
+
+    [Fact]
     public async Task Retries_when_the_llm_selects_a_workflow_outside_the_offered_image_count_range()
     {
         var llm = new FakeLlmClient(
@@ -246,6 +361,73 @@ public class ImageEditOrchestratorTests
 
         Assert.Equal(EditSessionStatus.Failed, session.Status);
         Assert.Contains("0 source image(s)", session.FailureReason);
+        Assert.Empty(llm.Requests);
+        Assert.Equal(0, comfy.CallCount);
+    }
+
+    [Fact]
+    public async Task Uses_the_forced_workflow_without_asking_the_llm_to_choose_one()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf-forced","refinedPrompt":"make it blue","reasoning":"only option","imageOrder":[0]}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(
+            FakeWorkflowCatalog.SimpleWorkflow("wf-forced"),
+            FakeWorkflowCatalog.SimpleWorkflow("wf-other"));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
+
+        var forced = catalog.GetAll().Single(w => w.Id == "wf-forced");
+        var session = await orchestrator.RunAsync(
+            MakeRequest(), progress: null, CancellationToken.None, alreadyUploaded: null, forcedWorkflow: forced);
+
+        // The other eligible workflow is never even shown to the LLM as an option.
+        var systemPrompt = llm.Requests[0].SystemPrompt;
+        Assert.Contains("wf-forced", systemPrompt);
+        Assert.DoesNotContain("wf-other", systemPrompt);
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal("wf-forced", session.History[0].WorkflowId);
+    }
+
+    [Fact]
+    public async Task Allows_an_empty_refinedPrompt_for_a_workflow_that_does_not_accept_a_prompt()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf-no-prompt","refinedPrompt":"","reasoning":"purely mechanical","imageOrder":[0]}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow("wf-no-prompt", acceptsPrompt: false));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 1 }));
+
+        var forced = catalog.GetAll().Single();
+        var session = await orchestrator.RunAsync(
+            MakeRequest(), progress: null, CancellationToken.None, alreadyUploaded: null, forcedWorkflow: forced);
+
+        // An empty refinedPrompt would be a retry-able parse failure for a prompt-using workflow —
+        // it must not be here, since the workflow has nothing to do with it either way.
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Single(session.History);
+        Assert.Equal(1, comfy.CallCount);
+    }
+
+    [Fact]
+    public async Task Fails_immediately_without_calling_the_llm_when_the_forced_workflow_does_not_fit_the_request()
+    {
+        var llm = new FakeLlmClient(); // no scripted responses — must never be called
+        var comfy = new FakeComfyUiClient();
+        var forced = FakeWorkflowCatalog.SimpleWorkflow("wf-3img", minImages: 3, maxImages: 3);
+        var catalog = new FakeWorkflowCatalog(forced);
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 3 }));
+
+        // Only 1 source image supplied, but the forced workflow needs 3.
+        var session = await orchestrator.RunAsync(
+            MakeRequest(), progress: null, CancellationToken.None, alreadyUploaded: null, forcedWorkflow: forced);
+
+        Assert.Equal(EditSessionStatus.Failed, session.Status);
+        Assert.Contains("wf-3img", session.FailureReason);
         Assert.Empty(llm.Requests);
         Assert.Equal(0, comfy.CallCount);
     }

@@ -30,7 +30,8 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
         EditRequest request,
         IProgress<EditIteration>? progress,
         CancellationToken ct,
-        IReadOnlyDictionary<Guid, string>? alreadyUploaded = null)
+        IReadOnlyDictionary<Guid, string>? alreadyUploaded = null,
+        WorkflowDefinition? forcedWorkflow = null)
     {
         var session = new EditSession { Request = request };
         IReadOnlyDictionary<Guid, string>? uploadedImages = alreadyUploaded;
@@ -45,9 +46,10 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                 WorkflowDefinition workflow;
                 string refinedPrompt;
                 string reasoning;
+                IReadOnlyList<int> imageOrder;
                 try
                 {
-                    (workflow, refinedPrompt, reasoning) = await _planner.PlanAsync(request, previousIteration, ct);
+                    (workflow, refinedPrompt, reasoning, imageOrder) = await _planner.PlanAsync(request, previousIteration, forcedWorkflow, ct);
                 }
                 catch (LlmResponseParseException ex)
                 {
@@ -75,11 +77,21 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                     continue;
                 }
 
-                // No image-count mismatch check here: ImageEditPlanner.PlanAsync only ever offers
-                // (and only ever resolves an id against) workflows whose min/maxImages already fit
-                // request.Images.Count, so `workflow` is guaranteed compatible by construction.
+                // No image-count or mask mismatch check here: ImageEditPlanner.PlanAsync only ever
+                // offers (and only ever resolves an id against) workflows whose min/maxImages
+                // already fit request.Images.Count and whose RequiresMask already matches whether
+                // a mask was supplied, so `workflow` is guaranteed compatible by construction.
 
-                var runResult = await _comfy.RunWorkflowAsync(workflow, request, refinedPrompt, uploadedImages, null, ct);
+                // The planner sees the images in the user's original order every iteration (so its
+                // own references to "image 1"/"image 2" stay consistent across retries), and
+                // separately decides how they map onto the chosen workflow's slots. Reorder just
+                // for this run — the judge below still gets the original request/order, since it's
+                // only comparing the result against the source images, not caring which slot each
+                // one filled.
+                var orderedImages = imageOrder.Select(index => request.Images[index]).ToList();
+                var runRequest = new EditRequest(orderedImages, request.Prompt, request.Mask);
+
+                var runResult = await _comfy.RunWorkflowAsync(workflow, runRequest, refinedPrompt, uploadedImages, null, ct);
                 uploadedImages = runResult.UploadedImageNames;
 
                 bool satisfied;

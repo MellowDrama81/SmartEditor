@@ -73,6 +73,15 @@ public class FileWorkflowCatalogTests
             new[] { "flux2-inpaint", "flux2-klein-inpaint-reference", "qwen-diffsynth-inpaint", "qwen-image-edit-2511-inpainting", "qwen-image-instantx-inpainting" },
             maskedWorkflows);
 
+        var promptFreeWorkflows = workflows.Where(w => !w.Capabilities.AcceptsPrompt).Select(w => w.Id).OrderBy(id => id).ToArray();
+        Assert.Equal(
+            new[]
+            {
+                "canny-extract-control-guide", "depth-extract-control-guide", "dwpose-extract-pose-guide",
+                "lineart-extract-control-guide", "normal-extract-control-guide", "remove-background", "upscale-with-model",
+            },
+            promptFreeWorkflows);
+
         // Three metadata entries intentionally share the same underlying graph template.
         var sharedGraphIds = new[] { "qwen-image-edit-2511", "qwen-image-edit-2511-character-pose", "qwen-image-edit-2511-character-prepared-pose" };
         var graphPaths = workflows.Where(w => sharedGraphIds.Contains(w.Id)).Select(w => w.GraphFilePath).Distinct().ToArray();

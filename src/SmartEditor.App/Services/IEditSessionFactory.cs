@@ -11,7 +11,11 @@ namespace SmartEditor.App.Services;
 /// simply because the next run builds new client instances from <see cref="AppSettingsStore.Current"/>.</summary>
 public interface IEditSessionFactory
 {
-    IImageEditOrchestrator CreateOrchestrator();
+    /// <param name="maxIterationsOverride">Overrides the globally-configured max-iterations
+    /// setting for this one orchestrator (e.g. a per-tab override) &mdash; still clamped to the
+    /// same [1, <see cref="OrchestratorOptions.HardMaxIterations"/>] range. Omit to use whatever's
+    /// currently saved in Settings.</param>
+    IImageEditOrchestrator CreateOrchestrator(int? maxIterationsOverride = null);
 
     /// <summary>Builds a fresh <see cref="IComfyUiClient"/> from whatever settings are currently
     /// saved, independent of a full edit session &mdash; used for asset-library browsing, which
@@ -40,7 +44,7 @@ public sealed class EditSessionFactory : IEditSessionFactory
         _httpClientFactory = httpClientFactory;
     }
 
-    public IImageEditOrchestrator CreateOrchestrator()
+    public IImageEditOrchestrator CreateOrchestrator(int? maxIterationsOverride = null)
     {
         var settings = _settingsStore.Current;
 
@@ -56,7 +60,7 @@ public sealed class EditSessionFactory : IEditSessionFactory
 
         return new ImageEditOrchestrator(llmClient, _catalog, _guidance, CreateComfyClient(), Options.Create(new OrchestratorOptions
         {
-            MaxIterations = settings.MaxIterations,
+            MaxIterations = maxIterationsOverride ?? settings.MaxIterations,
         }));
     }
 

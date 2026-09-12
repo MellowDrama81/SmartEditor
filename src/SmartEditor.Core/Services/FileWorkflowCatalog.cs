@@ -53,6 +53,7 @@ public sealed class FileWorkflowCatalog : IWorkflowCatalog
         // Every other token ({{PROMPT:string}}, {{UPLOADED_IMAGE_FILENAME:image}}, ...) already sits
         // inside a JSON string literal, so it doesn't need substitution to parse.
         var rawGraph = File.ReadAllText(graphPath);
+        var acceptsPrompt = rawGraph.Contains("{{PROMPT:string}}", StringComparison.Ordinal);
         var parsableGraph = rawGraph.Replace("{{SEED:seed}}", "0", StringComparison.Ordinal);
         try
         {
@@ -68,7 +69,8 @@ public sealed class FileWorkflowCatalog : IWorkflowCatalog
             Id = meta.Id,
             DisplayName = meta.DisplayName,
             Description = meta.Description,
-            Capabilities = new WorkflowCapabilities(meta.Capabilities.RequiresMask, meta.Capabilities.MinImages, meta.Capabilities.MaxImages),
+            Capabilities = new WorkflowCapabilities(
+                meta.Capabilities.RequiresMask, meta.Capabilities.MinImages, meta.Capabilities.MaxImages, acceptsPrompt),
             GraphFilePath = graphPath,
         };
     }

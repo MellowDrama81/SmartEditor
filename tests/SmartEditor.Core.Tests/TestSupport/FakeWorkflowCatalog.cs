@@ -11,12 +11,13 @@ internal sealed class FakeWorkflowCatalog : IWorkflowCatalog
 
     public IReadOnlyList<WorkflowDefinition> GetAll() => _workflows;
 
-    public static WorkflowDefinition SimpleWorkflow(string id = "wf1", int minImages = 1, int maxImages = 1, bool requiresMask = false) => new()
+    public static WorkflowDefinition SimpleWorkflow(
+        string id = "wf1", int minImages = 1, int maxImages = 1, bool requiresMask = false, bool acceptsPrompt = true) => new()
     {
         Id = id,
         DisplayName = "Test Workflow",
         Description = "A workflow used only in tests.",
-        Capabilities = new WorkflowCapabilities(requiresMask, minImages, maxImages),
+        Capabilities = new WorkflowCapabilities(requiresMask, minImages, maxImages, acceptsPrompt),
         GraphFilePath = "unused-in-tests.json",
     };
 }

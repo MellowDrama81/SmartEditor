@@ -40,15 +40,40 @@
           <TextBlock Text="Mask set ✓" VerticalAlignment="Center" IsVisible="{Binding HasMask}" Foreground="ForestGreen" />
         </StackPanel>
 
+        <TextBlock Text="Workflow" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding WorkflowOptions}" SelectedItem="{Binding SelectedWorkflowOption}"
+                  DisplayMemberBinding="{Binding DisplayName}" HorizontalAlignment="Left" MinWidth="220"
+                  ToolTip.Tip="Pin this run to a specific workflow instead of letting the LLM choose one. The list only offers workflows that fit the images/mask above." />
+        <TextBlock Text="{Binding SelectedWorkflowOption.Description}" IsVisible="{Binding HasSelectedWorkflowDescription}"
+                   TextWrapping="Wrap" Opacity="0.8" FontStyle="Italic" />
+
+        <CheckBox Content="Refine prompt with LLM" IsChecked="{Binding RefinePromptWithLlm}"
+                  IsEnabled="{Binding CanToggleRefinePrompt}"
+                  ToolTip.Tip="When off (only possible with a specific workflow pinned above), the LLM isn't used at all — your prompt runs exactly as typed." />
+        <TextBlock Text="No LLM will be used for this run — the pinned workflow and prompt (if any) run exactly as given."
+                   IsVisible="{Binding !WillUseLlm}" Opacity="0.7" FontStyle="Italic" />
+
         <TextBlock Text="Prompt" FontWeight="SemiBold" />
         <TextBox Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="90"
+                  IsEnabled="{Binding PromptAccepted}"
                   PlaceholderText="Describe the edit you want…" />
+        <TextBlock Text="This workflow is purely mechanical and doesn't use a text prompt — you can run it as-is."
+                   IsVisible="{Binding !PromptAccepted}" Opacity="0.7" FontStyle="Italic" />
 
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Content="Run" Command="{Binding RunCommand}" />
-          <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
-          <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap" />
-        </StackPanel>
+        <!-- WrapPanel, not StackPanel: on a narrow phone screen these controls don't all fit on
+             one line, so they need to wrap onto a second line instead of forcing overflow. -->
+        <WrapPanel>
+          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,12,4">
+            <TextBlock Text="{Binding IterationsLabel}" VerticalAlignment="Center" />
+            <Slider Minimum="1" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                    Value="{Binding MaxIterations}" Width="120" VerticalAlignment="Center"
+                    ToolTip.Tip="While the LLM is judging results, this is the max number of retries. Without the LLM, this is exactly how many times it runs — every result is kept." />
+            <TextBlock Text="{Binding MaxIterations}" VerticalAlignment="Center" MinWidth="16" />
+          </StackPanel>
+          <Button Content="Run" Command="{Binding RunCommand}" Margin="0,0,8,4" />
+          <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0,0,8,4" />
+          <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="0,0,0,4" TextWrapping="Wrap" />
+        </WrapPanel>
 
         <TextBlock Text="Iteration history" FontWeight="SemiBold" />
         <ItemsControl ItemsSource="{Binding History}">
