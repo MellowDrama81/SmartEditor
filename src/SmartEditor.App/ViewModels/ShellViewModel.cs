@@ -15,6 +15,14 @@ public partial class ShellViewModel : ViewModelBase
     public ObservableCollection<TabViewModelBase> Tabs { get; } = [];
     public SettingsViewModel Settings { get; }
     public AssetsViewModel Assets { get; }
+    public WorkflowsViewModel Workflows { get; }
+    [ObservableProperty] public partial bool IsWorkflowsOpen { get; set; }
+    [RelayCommand] private void OpenWorkflows() => IsWorkflowsOpen = true;
+    [RelayCommand] private void CloseWorkflows()
+    {
+        IsWorkflowsOpen = false;
+        foreach (var editor in Tabs.OfType<EditorViewModel>()) editor.RefreshWorkflowOptions();
+    }
 
     [ObservableProperty]
     public partial TabViewModelBase? SelectedTab { get; set; }
@@ -38,10 +46,11 @@ public partial class ShellViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsAssetsOpen { get; set; }
 
-    public ShellViewModel(Func<EditorViewModel> editorFactory, AssetsViewModel assets, SettingsViewModel settings)
+    public ShellViewModel(Func<EditorViewModel> editorFactory, AssetsViewModel assets, SettingsViewModel settings, WorkflowsViewModel workflows)
     {
         _editorFactory = editorFactory;
         Settings = settings;
+        Workflows = workflows;
         Assets = assets;
 
         AddTab();
@@ -89,9 +98,9 @@ public partial class ShellViewModel : ViewModelBase
     private void OpenSettings() => IsSettingsOpen = true;
 
     [RelayCommand]
-    private void SaveSettings()
+    private async Task SaveSettingsAsync()
     {
-        Settings.Save();
+        await Settings.SaveAsync();
         IsSettingsOpen = false;
     }
 

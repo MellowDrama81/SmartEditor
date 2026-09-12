@@ -69,7 +69,9 @@ public partial class App : Application
         EnsureBundledFilesExtracted("Workflows", workflowsDirectory);
         EnsureBundledFilesExtracted("Guidance", guidanceDirectory);
 
-        services.AddSingleton<IWorkflowCatalog>(_ => new FileWorkflowCatalog(workflowsDirectory));
+        services.AddSingleton<ManagedWorkflowCatalog>(_ => new ManagedWorkflowCatalog(new FileWorkflowCatalog(workflowsDirectory), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SmartEditor", "CustomWorkflows")));
+        services.AddSingleton<IWorkflowCatalog>(sp => sp.GetRequiredService<ManagedWorkflowCatalog>());
+        services.AddSingleton<WorkflowsViewModel>();
         services.AddSingleton<IModelGuidanceCatalog>(_ =>
             new FileModelGuidanceCatalog(Path.Combine(guidanceDirectory, "model-guidance.json")));
         services.AddSingleton<IEditSessionFactory, EditSessionFactory>();

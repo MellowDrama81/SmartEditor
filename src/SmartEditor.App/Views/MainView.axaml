@@ -42,6 +42,7 @@
     <!-- Main content: header bar + editor tabs -->
     <Grid RowDefinitions="Auto,*" Margin="16">
       <DockPanel Grid.Row="0" Margin="0,0,0,12">
+        <Button Content="Workflows" DockPanel.Dock="Right" Margin="8,0,0,0" Command="{Binding OpenWorkflowsCommand}" />
         <Button Content="Settings" DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" />
         <Button Content="🗂 Assets" DockPanel.Dock="Right" Margin="0,0,8,0" Command="{Binding OpenAssetsCommand}" />
         <Button Content="+ New tab" DockPanel.Dock="Right" Margin="0,0,8,0" Command="{Binding AddTabCommand}" />
@@ -96,6 +97,16 @@
             <TextBlock Text="{Binding AssetPageSize}" HorizontalAlignment="Right" />
           </StackPanel>
 
+          <TextBlock Text="Cached thumbnails" Margin="0,8,0,0" />
+          <Slider Minimum="0" Maximum="1000" TickFrequency="10" IsSnapToTickEnabled="True" Value="{Binding ThumbnailCacheLimit}" />
+          <TextBlock Text="{Binding ThumbnailCacheLimit}" HorizontalAlignment="Right" />
+
+          <TextBlock Text="Cached full-size images" Margin="0,8,0,0" />
+          <Slider Minimum="0" Maximum="1000" TickFrequency="10" IsSnapToTickEnabled="True" Value="{Binding FullImageCacheLimit}" />
+          <TextBlock Text="{Binding FullImageCacheLimit}" HorizontalAlignment="Right" />
+          <TextBlock Text="Set either value to 0 to disable that cache. Oldest images are removed when the limit is lowered."
+                     TextWrapping="Wrap" Opacity="0.7" />
+
           <TextBlock Text="LLM base URL (OpenAI-compatible — OpenRouter, DeepInfra, …)" Margin="0,8,0,0" />
           <TextBox Text="{Binding LlmBaseUrl}" PlaceholderText="https://openrouter.ai/api/v1" />
 
@@ -138,5 +149,36 @@
         </Grid>
       </Border>
     </Grid>
+    <Border IsVisible="{Binding IsWorkflowsOpen}" Background="{DynamicResource SystemChromeMediumColor}" Padding="20">
+      <Grid RowDefinitions="Auto,*">
+        <DockPanel Margin="0,0,0,12">
+          <Button Content="Close" DockPanel.Dock="Right" Command="{Binding CloseWorkflowsCommand}" />
+          <TextBlock Text="Workflows" FontSize="22" FontWeight="Bold" />
+        </DockPanel>
+        <views:WorkflowsView Grid.Row="1" DataContext="{Binding Workflows}" />
+      </Grid>
+    </Border>
+    <Border IsVisible="{Binding IsImageViewerOpen}" Background="{DynamicResource SystemRegionColor}" Padding="16"
+            DataContext="{Binding Assets}">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <WrapPanel Margin="0,0,0,8">
+          <Button Content="Close image" Command="{Binding CloseImageViewerCommand}" />
+          <CheckBox Content="Actual size (100%)" IsChecked="{Binding IsActualSize}" Margin="16,0" />
+          <Button Content="Download" Command="{Binding DownloadCommand}" CommandParameter="{Binding ViewedImage}" />
+        </WrapPanel>
+        <StackPanel Grid.Row="1" Margin="0,0,0,8">
+          <TextBlock Text="{Binding ViewedImage.DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding ViewerStatus}" TextWrapping="Wrap" />
+        </StackPanel>
+        <Grid Grid.Row="2" Background="#202020" ClipToBounds="True">
+          <Image Source="{Binding ViewedImage.Thumbnail}" Stretch="Uniform" IsVisible="{Binding !IsActualSize}" />
+          <ScrollViewer IsVisible="{Binding IsActualSize}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+            <Image Source="{Binding ViewedImage.Thumbnail}" Stretch="Fill"
+                   Width="{Binding ViewedImage.Thumbnail.PixelSize.Width}" Height="{Binding ViewedImage.Thumbnail.PixelSize.Height}"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" />
+          </ScrollViewer>
+        </Grid>
+      </Grid>
+    </Border>
   </Grid>
 </UserControl>

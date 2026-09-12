@@ -143,7 +143,7 @@ public partial class EditorViewModel : TabViewModelBase
     /// the current selection if it's still eligible (e.g. removing an unrelated image shouldn't
     /// reset a still-valid choice) and falling back to "let the LLM decide" if it's not (e.g. the
     /// selected workflow needed a mask that was just cleared).</summary>
-    private void RefreshWorkflowOptions()
+    public void RefreshWorkflowOptions()
     {
         var previouslySelectedId = SelectedWorkflowOption?.Workflow?.Id;
 
@@ -394,6 +394,7 @@ public partial class EditorViewModel : TabViewModelBase
             ct.ThrowIfCancellationRequested();
             StatusMessage = $"Generating {i}/{runCount}...";
 
+            if (!_workflowCatalog.GetAll().Any(w => w.Id == workflow.Id)) throw new InvalidOperationException("Workflow is disabled or deleted.");
             var runResult = await comfy.RunWorkflowAsync(workflow, request, Prompt, uploadedImages, null, ct);
             uploadedImages = runResult.UploadedImageNames;
 

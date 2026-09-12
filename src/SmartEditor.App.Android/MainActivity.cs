@@ -8,7 +8,7 @@ namespace SmartEditor.App.Android;
 [Activity(
     Label = "SmartEditor.App.Android",
     Theme = "@style/MyTheme.NoActionBar",
-    Icon = "@drawable/icon",
+    Icon = "@drawable/smarteditor",
     MainLauncher = true,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity

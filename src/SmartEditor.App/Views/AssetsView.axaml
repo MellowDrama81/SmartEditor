@@ -45,6 +45,9 @@
                   <TextBlock Text="{Binding Filename}" FontSize="10" Opacity="0.6" TextTrimming="CharacterEllipsis"
                              ToolTip.Tip="{Binding Filename}" />
                   <TextBox Text="{Binding TagsText}" PlaceholderText="tags, comma, separated" FontSize="11" />
+                  <Button Content="View full-size" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                          Command="{Binding $parent[ItemsControl].DataContext.ViewImageCommand}"
+                          CommandParameter="{Binding}" />
                   <Button Content="Download" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                           Command="{Binding $parent[ItemsControl].DataContext.DownloadCommand}"
                           CommandParameter="{Binding}" />

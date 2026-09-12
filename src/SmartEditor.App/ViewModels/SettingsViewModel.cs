@@ -11,6 +11,7 @@ public partial class SettingsViewModel : ViewModelBase
     private const string DefaultCloudUrl = "https://cloud.comfy.org";
 
     private readonly AppSettingsStore _store;
+    private readonly AssetThumbnailCache _imageCache;
 
     [ObservableProperty]
     public partial bool IsComfyCloud { get; set; }
@@ -46,6 +47,12 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial int AssetPageSize { get; set; }
 
+    [ObservableProperty]
+    public partial int ThumbnailCacheLimit { get; set; }
+
+    [ObservableProperty]
+    public partial int FullImageCacheLimit { get; set; }
+
     public string CleartextWarning =>
         IsCleartext(ComfyUiBaseUrl) || IsCleartext(LlmBaseUrl)
             ? "One or more URLs use plain http:// — on Android this requires allowing cleartext traffic, which this app permits by default since these hosts are set at runtime."
@@ -53,9 +60,10 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool HasCleartextWarning => CleartextWarning.Length > 0;
 
-    public SettingsViewModel(AppSettingsStore store)
+    public SettingsViewModel(AppSettingsStore store, AssetThumbnailCache imageCache)
     {
         _store = store;
+        _imageCache = imageCache;
         var current = store.Current;
         IsComfyCloud = current.ComfyUiBackend == ComfyUiBackend.Cloud;
         ComfyUiBaseUrl = current.ComfyUiBaseUrl;
@@ -66,6 +74,8 @@ public partial class SettingsViewModel : ViewModelBase
         LlmSupportsJsonSchema = current.LlmSupportsJsonSchema;
         MaxIterations = current.MaxIterations;
         AssetPageSize = current.AssetPageSize;
+        ThumbnailCacheLimit = current.ThumbnailCacheLimit;
+        FullImageCacheLimit = current.FullImageCacheLimit;
     }
 
     // Swap in a sensible default URL when toggling backends, unless the user already typed
@@ -85,7 +95,7 @@ public partial class SettingsViewModel : ViewModelBase
     private static bool IsCleartext(string url) => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
 
     [RelayCommand]
-    public void Save()
+    public async Task SaveAsync()
     {
         _store.Save(new AppSettings
         {
@@ -98,6 +108,9 @@ public partial class SettingsViewModel : ViewModelBase
             LlmSupportsJsonSchema = LlmSupportsJsonSchema,
             MaxIterations = Math.Clamp(MaxIterations, 1, OrchestratorOptions.HardMaxIterations),
             AssetPageSize = Math.Clamp(AssetPageSize, 1, 500),
+            ThumbnailCacheLimit = Math.Clamp(ThumbnailCacheLimit, 0, 1_000),
+            FullImageCacheLimit = Math.Clamp(FullImageCacheLimit, 0, 1_000),
         });
+        await _imageCache.ApplyLimitsAsync();
     }
 }

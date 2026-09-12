@@ -8,6 +8,7 @@ namespace SmartEditor.Core.Services;
 /// <summary>Runs the bounded plan &#8594; execute &#8594; judge retry loop.</summary>
 public sealed class ImageEditOrchestrator : IImageEditOrchestrator
 {
+    private readonly IWorkflowCatalog _catalog;
     private readonly ImageEditPlanner _planner;
     private readonly ImageEditJudge _judge;
     private readonly IComfyUiClient _comfy;
@@ -20,6 +21,7 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
         IComfyUiClient comfy,
         IOptions<OrchestratorOptions> options)
     {
+        _catalog = catalog;
         _planner = new ImageEditPlanner(llm, catalog, guidance);
         _judge = new ImageEditJudge(llm);
         _comfy = comfy;
@@ -91,6 +93,8 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                 var orderedImages = imageOrder.Select(index => request.Images[index]).ToList();
                 var runRequest = new EditRequest(orderedImages, request.Prompt, request.Mask);
 
+                if (!_catalog.GetAll().Any(w => w.Id == workflow.Id))
+                    throw new InvalidOperationException("Selected workflow is disabled or deleted.");
                 var runResult = await _comfy.RunWorkflowAsync(workflow, runRequest, refinedPrompt, uploadedImages, null, ct);
                 uploadedImages = runResult.UploadedImageNames;
 

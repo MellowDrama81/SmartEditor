@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SmartEditor.App.Views.WorkflowsView" x:CompileBindings="False">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <TextBlock Text="Enable workflows to make them available to the LLM. Built-in workflows are read-only; custom workflows can be edited below."
+               TextWrapping="Wrap" Margin="0,0,0,12" />
+    <Grid Grid.Row="1" ColumnDefinitions="2*,3*">
+      <Grid RowDefinitions="Auto,*" Margin="0,0,16,0">
+        <Button Content="+ Add custom workflow" Command="{Binding AddCommand}" Margin="0,0,0,8" />
+        <ListBox Grid.Row="1" ItemsSource="{Binding Workflows}" SelectedItem="{Binding Selected}">
+          <ListBox.ItemTemplate><DataTemplate>
+            <StackPanel Spacing="3">
+              <TextBlock Text="{Binding Definition.DisplayName}" TextWrapping="Wrap" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Built-in" IsVisible="{Binding IsBuiltIn}" Opacity="0.6" />
+                <TextBlock Text="Custom" IsVisible="{Binding !IsBuiltIn}" Opacity="0.6" />
+                <TextBlock Text="Enabled" IsVisible="{Binding IsEnabled}" />
+                <TextBlock Text="Disabled" IsVisible="{Binding !IsEnabled}" Opacity="0.6" />
+              </StackPanel>
+            </StackPanel>
+          </DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="6">
+          <Button Content="Copy as custom workflow" Command="{Binding CopyCommand}" IsEnabled="{Binding !!Selected}" />
+          <Button Command="{Binding ToggleEnabledCommand}" IsEnabled="{Binding !!Selected}">
+            <StackPanel Orientation="Horizontal"><TextBlock Text="Disable workflow" IsVisible="{Binding Selected.IsEnabled}" />
+              <TextBlock Text="Enable workflow" IsVisible="{Binding !Selected.IsEnabled}" /></StackPanel>
+          </Button>
+          <TextBlock Text="ID" /><TextBox Text="{Binding Id}" IsReadOnly="{Binding !CanEditId}" />
+          <TextBlock Text="Name" /><TextBox Text="{Binding DisplayName}" IsReadOnly="{Binding !CanEdit}" />
+          <TextBlock Text="Description (shown to the LLM)" />
+          <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" IsReadOnly="{Binding !CanEdit}" />
+          <CheckBox Content="Requires mask" IsChecked="{Binding RequiresMask}" IsEnabled="{Binding CanEdit}" />
+          <TextBlock Text="Minimum / maximum source images" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <NumericUpDown Value="{Binding MinImages}" Minimum="0" Maximum="8" IsEnabled="{Binding CanEdit}" />
+            <NumericUpDown Value="{Binding MaxImages}" Minimum="0" Maximum="8" IsEnabled="{Binding CanEdit}" />
+          </StackPanel>
+          <TextBlock Text="ComfyUI API graph template" />
+          <TextBlock Text="Placeholders: {{PROMPT:string}}, {{SEED:seed}}, {{UPLOADED_IMAGE_FILENAME:image}} (then _2, _3…), {{UPLOADED_MASKED_IMAGE_FILENAME:image}}. Seed is unquoted; other tokens go inside JSON strings."
+                     TextWrapping="Wrap" Opacity="0.7" />
+          <TextBox Text="{Binding Graph}" AcceptsReturn="True" FontFamily="monospace" MinHeight="220" MaxHeight="400"
+                   IsReadOnly="{Binding !CanEdit}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Save" Command="{Binding SaveCommand}" IsEnabled="{Binding CanEdit}" />
+            <Button Content="Cancel edits" Command="{Binding CancelCommand}" />
+            <Button Content="Delete" Command="{Binding RequestDeleteCommand}" IsEnabled="{Binding CanDelete}" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding ConfirmingDelete}" Spacing="6">
+            <TextBlock Text="Delete this custom workflow? This cannot be undone." TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="Delete permanently" Command="{Binding DeleteCommand}" />
+              <Button Content="Keep workflow" Command="{Binding CancelDeleteCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+    <TextBlock Grid.Row="2" Text="{Binding Status}" TextWrapping="Wrap" Margin="0,10,0,0" />
+  </Grid>
+</UserControl>
+

@@ -56,6 +56,8 @@ internal sealed partial class ImageEditPlanner
 
         if (forcedWorkflow is not null)
         {
+            forcedWorkflow = _catalog.GetAll().FirstOrDefault(w => w.Id == forcedWorkflow.Id)
+                ?? throw new InvalidOperationException("Selected workflow is disabled or deleted.");
             // Still re-checked here (not just trusted from the UI that offered it): the same
             // reasoning as the auto-selected case applies just as much to a forced one — an
             // incompatible workflow either can't be substituted into or, for a missing mask, throws

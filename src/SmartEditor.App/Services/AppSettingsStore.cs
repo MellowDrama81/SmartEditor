@@ -21,6 +21,14 @@ public sealed record AppSettings
     /// the server's own hard maximum.</summary>
     public int AssetPageSize { get; init; } = 500;
 
+    /// <summary>Maximum number of asset thumbnails stored locally. Set to zero to turn off
+    /// thumbnail caching.</summary>
+    public int ThumbnailCacheLimit { get; init; } = 200;
+
+    /// <summary>Maximum number of full-resolution asset images stored locally. Set to zero to
+    /// turn off full-image caching.</summary>
+    public int FullImageCacheLimit { get; init; } = 40;
+
     public string LlmBaseUrl { get; init; } = "https://openrouter.ai/api/v1";
     public string LlmApiKey { get; init; } = "";
     public string LlmModel { get; init; } = "";

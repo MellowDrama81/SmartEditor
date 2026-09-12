@@ -22,6 +22,51 @@ public partial class AssetsViewModel : TabViewModelBase
     private string? _nextCursor;
     private bool _hasMore = true;
 
+    [ObservableProperty] public partial bool IsImageViewerOpen { get; set; }
+    [ObservableProperty] public partial AssetItemViewModel? ViewedImage { get; set; }
+    [ObservableProperty] public partial bool IsActualSize { get; set; }
+    [ObservableProperty] public partial string ViewerStatus { get; set; } = "";
+    private CancellationTokenSource? _viewerCts;
+
+    [RelayCommand]
+    private async Task ViewImageAsync(AssetItemViewModel item)
+    {
+        _viewerCts?.Cancel();
+        var cts = _viewerCts = new CancellationTokenSource();
+        ViewedImage = item;
+        IsActualSize = false;
+        ViewerStatus = "Loading image…";
+        IsImageViewerOpen = true;
+        try
+        {
+            var bytes = await _thumbnailCache.TryGetFullImageAsync(item.Filename, cts.Token)
+                ?? item.Bytes
+                ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(item.Filename, cts.Token);
+            cts.Token.ThrowIfCancellationRequested();
+            item.SetBytes(bytes);
+            await _thumbnailCache.SaveFullImageAsync(item.Filename, bytes, cts.Token);
+            cts.Token.ThrowIfCancellationRequested();
+            ViewerStatus = item.Thumbnail is { } bitmap
+                ? $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
+                : "This image format cannot be previewed. Use Download to save it.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { if (!cts.IsCancellationRequested) ViewerStatus = $"Could not open image: {ex.Message}"; }
+        finally
+        {
+            if (ReferenceEquals(_viewerCts, cts)) _viewerCts = null;
+            cts.Dispose();
+        }
+    }
+
+    [RelayCommand]
+    private void CloseImageViewer()
+    {
+        _viewerCts?.Cancel();
+        IsImageViewerOpen = false;
+        ViewedImage = null;
+    }
+
     /// <summary>Every asset loaded so far, unfiltered.</summary>
     public ObservableCollection<AssetItemViewModel> Assets { get; } = [];
 
@@ -66,9 +111,15 @@ public partial class AssetsViewModel : TabViewModelBase
 
     private async Task LoadPageAsync(bool reset)
     {
-        _refreshCts?.Cancel();
-        var cts = _refreshCts = new CancellationTokenSource();
-        var ct = cts.Token;
+        // Pagination shares the refresh lifetime so earlier pages finish caching their thumbnails.
+        if (reset)
+        {
+            _refreshCts?.Cancel();
+            _refreshCts?.Dispose();
+            _refreshCts = null;
+        }
+        _refreshCts ??= new CancellationTokenSource();
+        var ct = _refreshCts.Token;
 
         if (reset)
         {
@@ -152,7 +203,7 @@ public partial class AssetsViewModel : TabViewModelBase
 
             try
             {
-                var cached = await _thumbnailCache.TryGetAsync(item.Filename, ct);
+                var cached = await _thumbnailCache.TryGetThumbnailAsync(item.Filename, ct);
                 if (cached is not null)
                 {
                     item.SetBytes(cached);
@@ -161,7 +212,7 @@ public partial class AssetsViewModel : TabViewModelBase
 
                 var bytes = await comfy.DownloadInputAssetAsync(item.Filename, ct);
                 item.SetBytes(bytes);
-                await _thumbnailCache.SaveAsync(item.Filename, bytes, ct);
+                await _thumbnailCache.SaveThumbnailAsync(item.Filename, bytes, ct);
             }
             catch (OperationCanceledException)
             {
@@ -196,7 +247,8 @@ public partial class AssetsViewModel : TabViewModelBase
                 var item = new AssetItemViewModel(new AssetInfo(name, file.Name), _tagsStore);
                 item.SetBytes(file.Bytes);
                 Assets.Insert(0, item);
-                _ = _thumbnailCache.SaveAsync(name, file.Bytes, CancellationToken.None);
+                _ = _thumbnailCache.SaveThumbnailAsync(name, file.Bytes, CancellationToken.None);
+                _ = _thumbnailCache.SaveFullImageAsync(name, file.Bytes, CancellationToken.None);
             }
             ApplyFilter();
             StatusMessage = $"Uploaded {picked.Count} file(s).";
@@ -244,7 +296,8 @@ public partial class AssetsViewModel : TabViewModelBase
 
         // Already have the bytes right here — seed the cache so a later Refresh (a fresh
         // AssetItemViewModel instance for the same filename) doesn't re-download them.
-        _ = _thumbnailCache.SaveAsync(filename, bytes, CancellationToken.None);
+        _ = _thumbnailCache.SaveThumbnailAsync(filename, bytes, CancellationToken.None);
+        _ = _thumbnailCache.SaveFullImageAsync(filename, bytes, CancellationToken.None);
     }
 
     [RelayCommand]
@@ -252,7 +305,10 @@ public partial class AssetsViewModel : TabViewModelBase
     {
         try
         {
-            var bytes = item.Bytes ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(item.Filename, CancellationToken.None);
+            var bytes = await _thumbnailCache.TryGetFullImageAsync(item.Filename, CancellationToken.None)
+                ?? item.Bytes
+                ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(item.Filename, CancellationToken.None);
+            await _thumbnailCache.SaveFullImageAsync(item.Filename, bytes, CancellationToken.None);
             var saved = await _filePicker.SaveFileAsync(bytes, item.Filename);
             StatusMessage = saved ? $"Saved {item.Filename}." : StatusMessage;
         }
