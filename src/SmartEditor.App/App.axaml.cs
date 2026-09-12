@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Microsoft.Extensions.DependencyInjection;
+using System.Security.Cryptography;
 using SmartEditor.App.Services;
 using SmartEditor.App.ViewModels;
 using SmartEditor.App.Views;
@@ -93,30 +94,47 @@ public partial class App : Application
     /// the matching <c>AvaloniaResource</c> items in SmartEditor.App.csproj) into
     /// <paramref name="targetDirectory"/>, so <see cref="FileWorkflowCatalog"/> and
     /// <see cref="FileModelGuidanceCatalog"/> can keep reading real files from a real path on every
-    /// platform. Skipped if the directory already has anything in it — on Desktop, SmartEditor.Core's
-    /// own Content/CopyToOutputDirectory items already put the files there at build time, so this
-    /// is a no-op; on Android (whose private app-data AppContext.BaseDirectory starts out empty,
-    /// which is what actually causes a fresh install to fail with "Workflows directory not found")
-    /// this is what populates it, once, on first launch.</summary>
+    /// platform. Each embedded file is content-hash checked on launch and replaced only if it has
+    /// changed. This keeps Android installs current across app upgrades while preserving custom
+    /// workflows, which live in a separate application-data directory.</summary>
     private static void EnsureBundledFilesExtracted(string avaresFolderName, string targetDirectory)
     {
-        if (Directory.Exists(targetDirectory) && Directory.EnumerateFileSystemEntries(targetDirectory).Any())
-        {
-            return;
-        }
-
         Directory.CreateDirectory(targetDirectory);
 
         var folderUri = new Uri($"avares://SmartEditor.App/{avaresFolderName}/");
-        foreach (var assetUri in AssetLoader.GetAssets(folderUri, null))
+        var assetUris = AssetLoader.GetAssets(folderUri, null).ToList();
+        var bundledPaths = assetUris.Select(assetUri =>
+        {
+            var relativePath = assetUri.AbsolutePath[folderUri.AbsolutePath.Length..].TrimStart('/');
+            return Path.Combine(targetDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }).ToHashSet(StringComparer.Ordinal);
+
+        // Bundled workflows are never user-owned (custom workflows are stored elsewhere), so a
+        // removed resource must also disappear after an upgrade rather than remain selectable.
+        foreach (var existingPath in Directory.EnumerateFiles(targetDirectory, "*.json"))
+        {
+            if (!bundledPaths.Contains(existingPath)) File.Delete(existingPath);
+        }
+
+        foreach (var assetUri in assetUris)
         {
             var relativePath = assetUri.AbsolutePath[folderUri.AbsolutePath.Length..].TrimStart('/');
             var destinationPath = Path.Combine(targetDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
 
             using var source = AssetLoader.Open(assetUri);
-            using var destination = File.Create(destinationPath);
-            source.CopyTo(destination);
+            using var memory = new MemoryStream();
+            source.CopyTo(memory);
+            var bundledBytes = memory.ToArray();
+            if (File.Exists(destinationPath) &&
+                SHA256.HashData(File.ReadAllBytes(destinationPath)).AsSpan().SequenceEqual(SHA256.HashData(bundledBytes)))
+            {
+                continue;
+            }
+
+            var temporaryPath = destinationPath + ".tmp";
+            File.WriteAllBytes(temporaryPath, bundledBytes);
+            File.Move(temporaryPath, destinationPath, overwrite: true);
         }
     }
 }

@@ -17,6 +17,7 @@ public sealed class ManagedWorkflowCatalog : IWorkflowCatalog
     private readonly object _gate = new();
     private State _state;
     private List<WorkflowDefinition> _custom;
+    public string StartupWarning { get; }
     public event Action? Changed;
 
     public ManagedWorkflowCatalog(IWorkflowCatalog builtIns, string directory)
@@ -24,12 +25,52 @@ public sealed class ManagedWorkflowCatalog : IWorkflowCatalog
         _builtIns = builtIns.GetAll();
         _directory = directory;
         Directory.CreateDirectory(directory);
-        _state = File.Exists(StatePath)
-            ? JsonSerializer.Deserialize<State>(File.ReadAllText(StatePath)) ?? new() : new();
-        _custom = _state.Custom.Select(Materialize).ToList();
+        _state = LoadState(out var warnings);
+        _custom = [];
+        foreach (var workflow in _state.Custom)
+        {
+            try
+            {
+                _custom.Add(Materialize(workflow));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                warnings.Add($"Custom workflow '{workflow.Id}' was skipped: {ex.Message}");
+            }
+        }
+        StartupWarning = string.Join(" ", warnings);
     }
 
     private string StatePath => Path.Combine(_directory, "workflows.json");
+
+    private State LoadState(out List<string> warnings)
+    {
+        warnings = [];
+        if (!File.Exists(StatePath)) return new State();
+        try
+        {
+            var state = JsonSerializer.Deserialize<State>(File.ReadAllText(StatePath));
+            return new State
+            {
+                Custom = state?.Custom ?? [],
+                Disabled = state?.Disabled ?? [],
+            };
+        }
+        catch (JsonException)
+        {
+            var backupPath = StatePath + ".bad";
+            try { File.Move(StatePath, backupPath, overwrite: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            warnings.Add("Saved workflow settings were corrupt and have been reset. The original file was saved as workflows.json.bad.");
+            return new State();
+        }
+        catch (IOException)
+        {
+            warnings.Add("Saved workflow settings could not be read; built-in workflows remain available.");
+            return new State();
+        }
+    }
     public IReadOnlyList<WorkflowDefinition> GetAll() => GetManaged().Where(w => w.IsEnabled).Select(w => w.Definition).ToList();
     public IReadOnlyList<ManagedWorkflow> GetManaged()
     {

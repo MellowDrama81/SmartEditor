@@ -62,5 +62,16 @@ public sealed class ManagedWorkflowCatalogTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => planner.PlanAsync(
             new EditRequest([new SourceImage("in.png", TestImages.TinyPng)], "edit"), null, workflow, CancellationToken.None));
     }
+    [Fact] public void Corrupt_saved_state_does_not_prevent_built_ins_from_loading()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "workflows.json"), "{not json");
+
+        var catalog = Create();
+
+        Assert.Single(catalog.GetAll());
+        Assert.NotEmpty(catalog.StartupWarning);
+        Assert.True(File.Exists(Path.Combine(_directory, "workflows.json.bad")));
+    }
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
 }

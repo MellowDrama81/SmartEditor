@@ -27,6 +27,7 @@ public partial class WorkflowsViewModel : ViewModelBase
     {
         _catalog = catalog;
         Reload();
+        Status = catalog.StartupWarning;
     }
     private void Reload(string? id = null)
     {

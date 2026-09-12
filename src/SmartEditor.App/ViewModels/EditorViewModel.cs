@@ -253,7 +253,7 @@ public partial class EditorViewModel : TabViewModelBase
         byte[] bytes;
         try
         {
-            bytes = asset.Bytes ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(asset.Filename, CancellationToken.None);
+            bytes = await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(asset.Filename, CancellationToken.None);
         }
         catch (Exception ex)
         {

@@ -32,6 +32,7 @@ public partial class AssetsViewModel : TabViewModelBase
     private async Task ViewImageAsync(AssetItemViewModel item)
     {
         _viewerCts?.Cancel();
+        ViewedImage?.ClearFullImage();
         var cts = _viewerCts = new CancellationTokenSource();
         ViewedImage = item;
         IsActualSize = false;
@@ -40,13 +41,21 @@ public partial class AssetsViewModel : TabViewModelBase
         try
         {
             var bytes = await _thumbnailCache.TryGetFullImageAsync(item.Filename, cts.Token)
-                ?? item.Bytes
                 ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(item.Filename, cts.Token);
             cts.Token.ThrowIfCancellationRequested();
-            item.SetBytes(bytes);
+            item.SetFullImageBytes(bytes);
+            if (item.Thumbnail is null)
+            {
+                var thumbnailBytes = await Task.Run(() => AssetThumbnailRenderer.TryCreate(bytes), cts.Token);
+                if (thumbnailBytes is not null)
+                {
+                    item.SetThumbnailBytes(thumbnailBytes);
+                    await _thumbnailCache.SaveThumbnailAsync(item.Filename, thumbnailBytes, cts.Token);
+                }
+            }
             await _thumbnailCache.SaveFullImageAsync(item.Filename, bytes, cts.Token);
             cts.Token.ThrowIfCancellationRequested();
-            ViewerStatus = item.Thumbnail is { } bitmap
+            ViewerStatus = item.FullImage is { } bitmap
                 ? $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
                 : "This image format cannot be previewed. Use Download to save it.";
         }
@@ -63,6 +72,7 @@ public partial class AssetsViewModel : TabViewModelBase
     private void CloseImageViewer()
     {
         _viewerCts?.Cancel();
+        ViewedImage?.ClearFullImage();
         IsImageViewerOpen = false;
         ViewedImage = null;
     }
@@ -206,13 +216,19 @@ public partial class AssetsViewModel : TabViewModelBase
                 var cached = await _thumbnailCache.TryGetThumbnailAsync(item.Filename, ct);
                 if (cached is not null)
                 {
-                    item.SetBytes(cached);
+                    item.SetThumbnailBytes(cached);
                     continue;
                 }
 
-                var bytes = await comfy.DownloadInputAssetAsync(item.Filename, ct);
-                item.SetBytes(bytes);
-                await _thumbnailCache.SaveThumbnailAsync(item.Filename, bytes, ct);
+                var fullBytes = await comfy.DownloadInputAssetAsync(item.Filename, ct);
+                var thumbnailBytes = await Task.Run(() => AssetThumbnailRenderer.TryCreate(fullBytes), ct);
+                if (thumbnailBytes is null)
+                {
+                    item.IsLoadingThumbnail = false;
+                    continue;
+                }
+                item.SetThumbnailBytes(thumbnailBytes);
+                await _thumbnailCache.SaveThumbnailAsync(item.Filename, thumbnailBytes, ct);
             }
             catch (OperationCanceledException)
             {
@@ -245,9 +261,11 @@ public partial class AssetsViewModel : TabViewModelBase
                 // record — this stands in for the display name until the user hits Refresh, which
                 // picks up the real one from the listing API on Cloud.
                 var item = new AssetItemViewModel(new AssetInfo(name, file.Name), _tagsStore);
-                item.SetBytes(file.Bytes);
+                var thumbnailBytes = AssetThumbnailRenderer.TryCreate(file.Bytes);
+                if (thumbnailBytes is not null) item.SetThumbnailBytes(thumbnailBytes);
+                else item.IsLoadingThumbnail = false;
                 Assets.Insert(0, item);
-                _ = _thumbnailCache.SaveThumbnailAsync(name, file.Bytes, CancellationToken.None);
+                if (thumbnailBytes is not null) _ = _thumbnailCache.SaveThumbnailAsync(name, thumbnailBytes, CancellationToken.None);
                 _ = _thumbnailCache.SaveFullImageAsync(name, file.Bytes, CancellationToken.None);
             }
             ApplyFilter();
@@ -290,13 +308,15 @@ public partial class AssetsViewModel : TabViewModelBase
     private void InsertAtFront(string filename, string displayName, byte[] bytes)
     {
         var item = new AssetItemViewModel(new AssetInfo(filename, displayName), _tagsStore);
-        item.SetBytes(bytes);
+        var thumbnailBytes = AssetThumbnailRenderer.TryCreate(bytes);
+        if (thumbnailBytes is not null) item.SetThumbnailBytes(thumbnailBytes);
+        else item.IsLoadingThumbnail = false;
         Assets.Insert(0, item);
         ApplyFilter();
 
         // Already have the bytes right here — seed the cache so a later Refresh (a fresh
         // AssetItemViewModel instance for the same filename) doesn't re-download them.
-        _ = _thumbnailCache.SaveThumbnailAsync(filename, bytes, CancellationToken.None);
+        if (thumbnailBytes is not null) _ = _thumbnailCache.SaveThumbnailAsync(filename, thumbnailBytes, CancellationToken.None);
         _ = _thumbnailCache.SaveFullImageAsync(filename, bytes, CancellationToken.None);
     }
 
@@ -306,7 +326,6 @@ public partial class AssetsViewModel : TabViewModelBase
         try
         {
             var bytes = await _thumbnailCache.TryGetFullImageAsync(item.Filename, CancellationToken.None)
-                ?? item.Bytes
                 ?? await _sessionFactory.CreateComfyClient().DownloadInputAssetAsync(item.Filename, CancellationToken.None);
             await _thumbnailCache.SaveFullImageAsync(item.Filename, bytes, CancellationToken.None);
             var saved = await _filePicker.SaveFileAsync(bytes, item.Filename);

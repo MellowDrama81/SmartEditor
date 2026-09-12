@@ -5,7 +5,8 @@
              xmlns:views="using:SmartEditor.App.Views"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
              x:CompileBindings="False"
-             x:Class="SmartEditor.App.Views.MainView">
+             x:Class="SmartEditor.App.Views.MainView"
+             x:Name="Root">
 
   <UserControl.Styles>
     <!-- Distinct, high-contrast tab headers, all pitched against an explicitly-colored page
@@ -79,9 +80,11 @@
     <!-- Settings overlay -->
     <Grid Background="#AA000000" IsVisible="{Binding IsSettingsOpen}">
       <Border Background="{DynamicResource SystemChromeMediumColor}" Padding="20" CornerRadius="6"
-              MaxWidth="480" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <StackPanel Spacing="6" DataContext="{Binding Settings}">
+              MaxWidth="480" MaxHeight="700" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,*,Auto">
           <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" Margin="0,0,0,8" />
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="6" DataContext="{Binding Settings}">
 
           <CheckBox Content="Use Comfy Cloud (cloud.comfy.org)" IsChecked="{Binding IsComfyCloud}" />
 
@@ -125,11 +128,13 @@
           <TextBlock Text="{Binding CleartextWarning}" Foreground="OrangeRed" TextWrapping="Wrap"
                      IsVisible="{Binding HasCleartextWarning}" Margin="0,8,0,0" />
 
-          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="Cancel" Command="{Binding $parent[Grid].DataContext.CancelSettingsCommand}" />
-            <Button Content="Save" Command="{Binding $parent[Grid].DataContext.SaveSettingsCommand}" />
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Command="{Binding DataContext.CancelSettingsCommand, ElementName=Root}" />
+            <Button Content="Save" Command="{Binding DataContext.SaveSettingsCommand, ElementName=Root}" />
           </StackPanel>
-        </StackPanel>
+        </Grid>
       </Border>
     </Grid>
 
@@ -171,10 +176,10 @@
           <TextBlock Text="{Binding ViewerStatus}" TextWrapping="Wrap" />
         </StackPanel>
         <Grid Grid.Row="2" Background="#202020" ClipToBounds="True">
-          <Image Source="{Binding ViewedImage.Thumbnail}" Stretch="Uniform" IsVisible="{Binding !IsActualSize}" />
+          <Image Source="{Binding ViewedImage.FullImage}" Stretch="Uniform" IsVisible="{Binding !IsActualSize}" />
           <ScrollViewer IsVisible="{Binding IsActualSize}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-            <Image Source="{Binding ViewedImage.Thumbnail}" Stretch="Fill"
-                   Width="{Binding ViewedImage.Thumbnail.PixelSize.Width}" Height="{Binding ViewedImage.Thumbnail.PixelSize.Height}"
+            <Image Source="{Binding ViewedImage.FullImage}" Stretch="Fill"
+                   Width="{Binding ViewedImage.FullImage.PixelSize.Width}" Height="{Binding ViewedImage.FullImage.PixelSize.Height}"
                    HorizontalAlignment="Left" VerticalAlignment="Top" />
           </ScrollViewer>
         </Grid>

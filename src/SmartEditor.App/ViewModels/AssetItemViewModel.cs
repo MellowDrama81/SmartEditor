@@ -18,12 +18,13 @@ public partial class AssetItemViewModel : ViewModelBase
     /// human-readable; see <see cref="AssetInfo.Name"/>.</summary>
     public string Filename { get; }
 
-    /// <summary>The asset's raw bytes, once fetched — cached so "Download" doesn't need a second
-    /// round trip after the thumbnail has already loaded them.</summary>
-    public byte[]? Bytes { get; private set; }
-
     [ObservableProperty]
     public partial Bitmap? Thumbnail { get; set; }
+
+    /// <summary>Only populated while this asset is open in the full-size viewer. Keeping it off
+    /// the grid items prevents a large asset library from retaining every original-sized bitmap.</summary>
+    [ObservableProperty]
+    public partial Bitmap? FullImage { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoadingThumbnail { get; set; } = true;
@@ -53,9 +54,8 @@ public partial class AssetItemViewModel : ViewModelBase
         }
     }
 
-    public void SetBytes(byte[] bytes)
+    public void SetThumbnailBytes(byte[] bytes)
     {
-        Bytes = bytes;
         try
         {
             using var stream = new MemoryStream(bytes);
@@ -70,5 +70,25 @@ public partial class AssetItemViewModel : ViewModelBase
         {
             IsLoadingThumbnail = false;
         }
+    }
+
+    public void SetFullImageBytes(byte[] bytes)
+    {
+        ClearFullImage();
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            FullImage = new Bitmap(stream);
+        }
+        catch (Exception)
+        {
+            // The thumbnail may still be usable if this full-size decode fails.
+        }
+    }
+
+    public void ClearFullImage()
+    {
+        FullImage?.Dispose();
+        FullImage = null;
     }
 }

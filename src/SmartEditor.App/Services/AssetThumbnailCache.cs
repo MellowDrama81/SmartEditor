@@ -17,8 +17,14 @@ public sealed class AssetThumbnailCache
     {
         _settingsStore = settingsStore;
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SmartEditor", "image-cache");
-        _thumbnailDirectory = Path.Combine(root, "thumbnails");
+        // v2 contains genuinely downscaled PNGs. The old pool stored original image bytes under
+        // thumbnail names, so it must never be read by the grid after this migration.
+        _thumbnailDirectory = Path.Combine(root, "thumbnails-v2");
         _fullImageDirectory = Path.Combine(root, "full-images");
+        try { Directory.Delete(Path.Combine(root, "thumbnails"), recursive: true); }
+        catch (DirectoryNotFoundException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     public Task<byte[]?> TryGetThumbnailAsync(string filename, CancellationToken ct) =>
