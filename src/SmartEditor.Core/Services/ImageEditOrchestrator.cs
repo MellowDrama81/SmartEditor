@@ -95,7 +95,36 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
 
                 if (!_catalog.GetAll().Any(w => w.Id == workflow.Id))
                     throw new InvalidOperationException("Selected workflow is disabled or deleted.");
-                var runResult = await _comfy.RunWorkflowAsync(workflow, runRequest, refinedPrompt, uploadedImages, null, ct);
+
+                ComfyRunResult runResult;
+                try
+                {
+                    runResult = await _comfy.RunWorkflowAsync(workflow, runRequest, refinedPrompt, uploadedImages, null, ct);
+                }
+                catch (ComfyWorkflowException ex)
+                {
+                    // A failure ComfyUI itself reports (a bad graph, an out-of-memory node, a
+                    // timeout, etc.) doesn't have to end the whole session — same retry budget and
+                    // feedback loop as a judged-unsatisfactory result, so the next planning pass
+                    // sees exactly why this attempt failed and can pick a different workflow (or
+                    // just adjust the prompt, if the workflow is user-forced and can't change)
+                    // instead of giving up immediately.
+                    var failed = new EditIteration
+                    {
+                        Index = i,
+                        WorkflowId = workflow.Id,
+                        RefinedPrompt = refinedPrompt,
+                        PlannerReasoning = reasoning,
+                        ResultImageBytes = null,
+                        Satisfied = false,
+                        JudgeFeedback = $"ComfyUI failed to generate a result with this workflow: {ex.Message}",
+                    };
+                    session.History.Add(failed);
+                    progress?.Report(failed);
+                    previousIteration = failed;
+                    continue;
+                }
+
                 uploadedImages = runResult.UploadedImageNames;
 
                 bool satisfied;
@@ -143,7 +172,10 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
             }
 
             session.Status = EditSessionStatus.ExhaustedAttempts;
-            session.FinalResultBytes = session.History[^1].ResultImageBytes;
+            // Not just the last iteration's bytes: a Comfy failure or malformed plan can now be the
+            // last entry in the budget (both retry with null ResultImageBytes), which would
+            // otherwise blank out a perfectly good image an earlier iteration already produced.
+            session.FinalResultBytes = session.History.LastOrDefault(h => h.ResultImageBytes is not null)?.ResultImageBytes;
             return session;
         }
         catch (OperationCanceledException)

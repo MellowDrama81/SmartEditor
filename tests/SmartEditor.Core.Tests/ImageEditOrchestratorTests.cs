@@ -55,6 +55,27 @@ public class ImageEditOrchestratorTests
     }
 
     [Fact]
+    public async Task Exhausts_its_retry_budget_instead_of_looping_forever_when_comfy_keeps_failing()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"attempt 1","reasoning":"r1"}""",
+            """{"workflowId":"wf1","refinedPrompt":"attempt 2","reasoning":"r2"}""");
+        var comfy = new FakeComfyUiClient();
+        comfy.FailOnCallNumbers.Add(1);
+        comfy.FailOnCallNumbers.Add(2);
+        var orchestrator = MakeOrchestrator(llm, comfy, maxIterations: 2);
+
+        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.ExhaustedAttempts, session.Status);
+        Assert.Equal(2, session.History.Count);
+        Assert.All(session.History, i => Assert.False(i.Satisfied));
+        Assert.All(session.History, i => Assert.Null(i.ResultImageBytes));
+        Assert.Null(session.FinalResultBytes); // nothing was ever actually generated
+        Assert.Equal(2, comfy.CallCount);
+    }
+
+    [Fact]
     public async Task Reuses_cached_upload_names_after_the_first_iteration()
     {
         var llm = new FakeLlmClient(
@@ -156,6 +177,34 @@ public class ImageEditOrchestratorTests
         Assert.Null(session.History[0].ResultImageBytes);
         Assert.True(session.History[1].Satisfied);
         Assert.Equal(1, comfy.CallCount); // the malformed attempt never reached Comfy at all
+    }
+
+    [Fact]
+    public async Task Retries_with_a_different_workflow_instead_of_failing_the_session_when_comfy_fails()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"attempt 1","reasoning":"r1"}""",
+            """{"workflowId":"wf2","refinedPrompt":"attempt 2","reasoning":"r2 - avoiding wf1"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var comfy = new FakeComfyUiClient();
+        comfy.FailOnCallNumbers.Add(1); // wf1's run fails; wf2 should succeed
+        var catalog = new FakeWorkflowCatalog(FakeWorkflowCatalog.SimpleWorkflow("wf1"), FakeWorkflowCatalog.SimpleWorkflow("wf2"));
+        var orchestrator = new ImageEditOrchestrator(
+            llm, catalog, new FakeModelGuidanceCatalog(), comfy, Options.Create(new OrchestratorOptions { MaxIterations = 2 }));
+
+        var session = await orchestrator.RunAsync(MakeRequest(), progress: null, CancellationToken.None);
+
+        Assert.Equal(EditSessionStatus.Succeeded, session.Status);
+        Assert.Equal(2, session.History.Count);
+        // The failed attempt is recorded like any other retry (with null bytes, since nothing was
+        // generated) and its feedback names what actually went wrong, so the planner — and anyone
+        // looking at History afterward — can see why it moved on to a different workflow.
+        Assert.False(session.History[0].Satisfied);
+        Assert.Null(session.History[0].ResultImageBytes);
+        Assert.Contains("Simulated ComfyUI failure", session.History[0].JudgeFeedback);
+        Assert.True(session.History[1].Satisfied);
+        Assert.Equal(["wf1", "wf2"], comfy.ReceivedWorkflowIds);
+        Assert.NotNull(session.FinalResultBytes);
     }
 
     [Fact]
