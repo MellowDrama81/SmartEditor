@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Platform;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +11,8 @@ namespace SmartEditor.App.Views;
 
 public partial class MainView : UserControl
 {
+    private IInputPane? _inputPane;
+
     public MainView()
     {
         InitializeComponent();
@@ -19,7 +23,37 @@ public partial class MainView : UserControl
             {
                 picker.SetHost(TopLevel.GetTopLevel(this));
             }
+
+            // Avalonia doesn't yet shift focused content above the on-screen keyboard on its own
+            // (tracked upstream: https://github.com/AvaloniaUI/Avalonia/issues/13319) — on
+            // Android/iOS the keyboard just draws over whatever the user is typing into otherwise.
+            // Null on desktop (no software keyboard concept there), so this is a no-op there.
+            if (TopLevel.GetTopLevel(this)?.InputPane is { } inputPane)
+            {
+                _inputPane = inputPane;
+                _inputPane.StateChanged += OnInputPaneStateChanged;
+            }
         };
+
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (_inputPane is not null)
+            {
+                _inputPane.StateChanged -= OnInputPaneStateChanged;
+                _inputPane = null;
+            }
+        };
+    }
+
+    /// <summary>Pushes this whole view's content up above the keyboard by exactly its height, then
+    /// back down once it closes. Applied here, on the single root view every screen (including
+    /// every overlay dialog — settings, assets, mask editor, etc., which are all children of this
+    /// same view) lives inside of, rather than needing every individual screen to handle it.</summary>
+    private void OnInputPaneStateChanged(object? sender, InputPaneStateEventArgs e)
+    {
+        Margin = e.NewState == InputPaneState.Open
+            ? new Thickness(0, 0, 0, e.EndRect.Height)
+            : default;
     }
 
     /// <summary>The tab-header label is a read-only <see cref="TextBox"/> whenever its tab isn't
