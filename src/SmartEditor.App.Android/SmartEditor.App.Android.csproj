@@ -16,12 +16,15 @@
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
-  <!-- Release signing: only wired up for Release builds, and only once the referenced
-       environment variables are actually set (e.g. in a local shell before `dotnet publish`, or
-       as CI secrets) — nothing here is a committed secret. Debug builds are unaffected and keep
-       using the default debug key; without these env vars set, a Release build/publish also
-       falls back to the debug key rather than failing. -->
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+  <!-- Release signing: only wired up for Release builds, and only once
+       ANDROID_SIGNING_KEY_STORE is actually set in the environment (e.g. in a local shell before
+       `dotnet publish`, or as CI secrets) — nothing here is a committed secret. Without it, a
+       Release build/publish falls back to the debug key rather than failing. AndroidKeyStore
+       must be explicitly set to true — it defaults to false, and without it the
+       AndroidSigning* properties below are silently ignored and the debug key is used instead
+       (which is exactly what produced a debug-signed AAB that Google Play then rejected). -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release' AND '$(ANDROID_SIGNING_KEY_STORE)' != ''">
+    <AndroidKeyStore>true</AndroidKeyStore>
     <AndroidSigningKeyStore>$(ANDROID_SIGNING_KEY_STORE)</AndroidSigningKeyStore>
     <AndroidSigningKeyAlias>$(ANDROID_SIGNING_KEY_ALIAS)</AndroidSigningKeyAlias>
     <AndroidSigningKeyPass>$(ANDROID_SIGNING_KEY_PASS)</AndroidSigningKeyPass>
