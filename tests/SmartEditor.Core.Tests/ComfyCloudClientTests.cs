@@ -81,6 +81,22 @@ public class ComfyCloudClientTests
     }
 
     [Fact]
+    public async Task Survives_a_transient_network_failure_while_polling_for_completion()
+    {
+        // A dropped connection on one poll request shouldn't lose an otherwise-successful,
+        // possibly many-minutes-long generation — the client should just retry on the next tick.
+        var handler = new FakeCloudServerHandler { FailNextPollAttempts = 1 };
+        var client = MakeClient(handler);
+        var workflow = LoadWorkflow("z-image-turbo");
+        var request = new EditRequest([], "a watercolor fox");
+
+        var result = await client.RunWorkflowAsync(workflow, request, "a watercolor fox", null, null, CancellationToken.None);
+
+        Assert.Equal(new byte[] { 9, 9, 9, 9 }, result.ResultBytes);
+        Assert.Equal(0, handler.FailNextPollAttempts);
+    }
+
+    [Fact]
     public async Task Lists_input_and_output_assets_via_the_real_paginated_assets_api_excluding_models()
     {
         var handler = new FakeCloudServerHandler();

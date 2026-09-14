@@ -121,27 +121,39 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
         {
             ct.ThrowIfCancellationRequested();
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"api/jobs/{Uri.EscapeDataString(promptId)}");
-            ApplyAuth(request);
-            using var response = await _http.SendAsync(request, ct);
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                var responseText = await response.Content.ReadAsStringAsync(ct);
-                var root = JsonNode.Parse(responseText);
-                var status = root?["status"]?.GetValue<string>();
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"api/jobs/{Uri.EscapeDataString(promptId)}");
+                ApplyAuth(request);
+                using var response = await _http.SendAsync(request, ct);
 
-                switch (status)
+                if (response.IsSuccessStatusCode)
                 {
-                    case "success" or "completed":
-                        if (root?["outputs"] is JsonNode outputs)
-                        {
-                            return outputs;
-                        }
-                        throw new ComfyWorkflowException($"Comfy Cloud job '{promptId}' completed but reported no outputs.");
-                    case "error" or "non_retryable_error" or "lost" or "cancelled":
-                        throw new ComfyWorkflowException($"Comfy Cloud reported job '{promptId}' as '{status}'.");
+                    var responseText = await response.Content.ReadAsStringAsync(ct);
+                    var root = JsonNode.Parse(responseText);
+                    var status = root?["status"]?.GetValue<string>();
+
+                    switch (status)
+                    {
+                        case "success" or "completed":
+                            if (root?["outputs"] is JsonNode outputs)
+                            {
+                                return outputs;
+                            }
+                            throw new ComfyWorkflowException($"Comfy Cloud job '{promptId}' completed but reported no outputs.");
+                        case "error" or "non_retryable_error" or "lost" or "cancelled":
+                            throw new ComfyWorkflowException($"Comfy Cloud reported job '{promptId}' as '{status}'.");
+                    }
                 }
+            }
+            // A transient network hiccup mid-poll (e.g. a dropped connection) shouldn't abort an
+            // otherwise-successful, possibly many-minutes-long generation — just retry on the next
+            // poll tick instead of losing the whole run over one bad request. A real failure
+            // reported by Comfy Cloud itself (ComfyWorkflowException, thrown above) is a different
+            // exception type and so isn't caught here — that still aborts immediately, since it
+            // means the job itself failed, not just this one HTTP request.
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
             }
 
             if (DateTimeOffset.UtcNow > deadline)

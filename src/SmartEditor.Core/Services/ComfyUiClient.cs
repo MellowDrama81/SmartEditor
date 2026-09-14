@@ -87,27 +87,39 @@ public sealed class ComfyUiClient : ComfyUiClientBase
         {
             ct.ThrowIfCancellationRequested();
 
-            using var response = await _http.GetAsync($"history/{promptId}", ct);
-            if (response.IsSuccessStatusCode)
+            try
             {
-                var responseText = await response.Content.ReadAsStringAsync(ct);
-                var root = JsonNode.Parse(responseText);
-                var entry = root?[promptId];
-                if (entry is not null)
+                using var response = await _http.GetAsync($"history/{promptId}", ct);
+                if (response.IsSuccessStatusCode)
                 {
-                    var statusStr = entry["status"]?["status_str"]?.GetValue<string>();
-                    var completed = entry["status"]?["completed"]?.GetValue<bool>() ?? false;
-
-                    if (statusStr == "error")
+                    var responseText = await response.Content.ReadAsStringAsync(ct);
+                    var root = JsonNode.Parse(responseText);
+                    var entry = root?[promptId];
+                    if (entry is not null)
                     {
-                        throw new ComfyWorkflowException($"ComfyUI execution failed for prompt '{promptId}': {entry["status"]}");
-                    }
+                        var statusStr = entry["status"]?["status_str"]?.GetValue<string>();
+                        var completed = entry["status"]?["completed"]?.GetValue<bool>() ?? false;
 
-                    if (completed && entry["outputs"] is JsonNode outputs)
-                    {
-                        return outputs;
+                        if (statusStr == "error")
+                        {
+                            throw new ComfyWorkflowException($"ComfyUI execution failed for prompt '{promptId}': {entry["status"]}");
+                        }
+
+                        if (completed && entry["outputs"] is JsonNode outputs)
+                        {
+                            return outputs;
+                        }
                     }
                 }
+            }
+            // A transient network hiccup mid-poll (e.g. a dropped connection) shouldn't abort an
+            // otherwise-successful, possibly many-minutes-long generation — just retry on the next
+            // poll tick instead of losing the whole run over one bad request. A real failure
+            // reported by ComfyUI itself (ComfyWorkflowException, thrown above) is a different
+            // exception type and so isn't caught here — that still aborts immediately, since it
+            // means the job itself failed, not just this one HTTP request.
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
             }
 
             if (DateTimeOffset.UtcNow > deadline)

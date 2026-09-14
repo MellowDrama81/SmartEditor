@@ -154,6 +154,11 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
         {
             session.Status = EditSessionStatus.Failed;
             session.FailureReason = ex.Message;
+            // A hard failure (e.g. the next planning/judging call, or a transient Comfy error) doesn't
+            // mean every earlier iteration produced nothing usable — fall back to the last iteration
+            // that actually generated an image (a malformed-plan retry iteration has none) rather than
+            // discarding a perfectly viewable, just judged-unsatisfactory result.
+            session.FinalResultBytes = session.History.LastOrDefault(h => h.ResultImageBytes is not null)?.ResultImageBytes;
             return session;
         }
     }

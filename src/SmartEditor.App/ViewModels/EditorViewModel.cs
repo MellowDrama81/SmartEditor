@@ -417,8 +417,29 @@ public partial class EditorViewModel : TabViewModelBase
             ct.ThrowIfCancellationRequested();
             StatusMessage = $"Generating {i}/{runCount}...";
 
-            if (!_workflowCatalog.GetAll().Any(w => w.Id == workflow.Id)) throw new InvalidOperationException("Workflow is disabled or deleted.");
-            var runResult = await comfy.RunWorkflowAsync(workflow, request, Prompt, uploadedImages, null, ct);
+            ComfyRunResult runResult;
+            try
+            {
+                if (!_workflowCatalog.GetAll().Any(w => w.Id == workflow.Id))
+                {
+                    throw new InvalidOperationException("Workflow is disabled or deleted.");
+                }
+
+                runResult = await comfy.RunWorkflowAsync(workflow, request, Prompt, uploadedImages, null, ct);
+            }
+            // Caught here (rather than left to RunAsync's generic catch) so a failure partway
+            // through a multi-run batch reports accurately instead of "Could not start" — the
+            // iterations that already succeeded stay in History/the asset library either way, this
+            // only changes what the status message says happened. Cancellation still propagates
+            // normally to RunAsync's own "Cancelled." handling.
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                StatusMessage = i == 1
+                    ? $"Generation failed: {ex.Message}"
+                    : $"Generated {i - 1} of {runCount} before failing on attempt {i}: {ex.Message}";
+                return;
+            }
+
             uploadedImages = runResult.UploadedImageNames;
 
             var iteration = new EditIteration

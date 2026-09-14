@@ -13,6 +13,11 @@ internal sealed class FakeCloudServerHandler : HttpMessageHandler
     public string? LastPromptBody { get; private set; }
     public List<string?> ApiKeysSeen { get; } = [];
     public string JobStatus { get; set; } = "completed";
+
+    /// <summary>Number of upcoming "api/jobs/" poll requests to fail with a network-transport
+    /// exception (as a real dropped connection would surface through <see cref="HttpClient"/>)
+    /// before responding normally — simulates a transient blip mid-poll.</summary>
+    public int FailNextPollAttempts { get; set; }
     public List<string?> AssetListCursorsSeen { get; } = [];
     public List<string?> AssetListLimitsSeen { get; } = [];
 
@@ -43,6 +48,12 @@ internal sealed class FakeCloudServerHandler : HttpMessageHandler
 
         if (path.Contains("api/jobs/", StringComparison.Ordinal))
         {
+            if (FailNextPollAttempts > 0)
+            {
+                FailNextPollAttempts--;
+                throw new HttpRequestException("Simulated transient network failure.");
+            }
+
             if (JobStatus is "success" or "completed")
             {
                 var body = new JsonObject
