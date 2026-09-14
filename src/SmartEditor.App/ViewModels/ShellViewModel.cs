@@ -102,6 +102,11 @@ public partial class ShellViewModel : ViewModelBase
     {
         await Settings.SaveAsync();
         IsSettingsOpen = false;
+        // Newly adding (or removing) an LLM configuration changes whether "let the LLM decide" and
+        // prompt refinement are even offered (see EditorViewModel.IsLlmConfigured) — refresh every
+        // already-open tab so that takes effect immediately instead of only on its next unrelated
+        // image/mask change.
+        foreach (var editor in Tabs.OfType<EditorViewModel>()) editor.RefreshWorkflowOptions();
     }
 
     [RelayCommand]
