@@ -4,7 +4,8 @@ namespace SmartEditor.App.ViewModels;
 
 /// <summary>One entry in an editor tab's workflow picker: either a real <see cref="Workflow"/> the
 /// user is pinning the run to, or the "let the LLM decide" sentinel (<see cref="Workflow"/> is
-/// <c>null</c>) that's always first and selected by default.</summary>
+/// <c>null</c>) that's first and selected by default whenever an LLM is configured at all (see
+/// <see cref="EditorViewModel.IsLlmConfigured"/>).</summary>
 public sealed class WorkflowOptionViewModel
 {
     public WorkflowDefinition? Workflow { get; }

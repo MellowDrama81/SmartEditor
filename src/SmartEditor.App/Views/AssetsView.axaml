@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:conv="using:SmartEditor.App.Converters"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
              x:CompileBindings="False"
              x:Class="SmartEditor.App.Views.AssetsView">
@@ -33,7 +34,13 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Width="176" Margin="4" Padding="8" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+              <!-- Width is normally TwoColumnThumbnailWidthConverter.PreferredWidth (176) — the
+                   converter only shrinks it, bound off the scroll container's own live width, when
+                   that full size wouldn't otherwise leave room for a second column (a narrow phone
+                   in portrait). Nothing about the underlying thumbnail image changes; only how big
+                   this card draws it. -->
+              <Border Width="{Binding $parent[ScrollViewer].Bounds.Width, Converter={x:Static conv:TwoColumnThumbnailWidthConverter.Instance}}"
+                      Margin="4" Padding="8" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
                 <StackPanel Spacing="4">
                   <Grid Height="120">
                     <Image Source="{Binding Thumbnail}" Stretch="Uniform" />

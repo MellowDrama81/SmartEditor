@@ -9,7 +9,9 @@
 
   <Grid>
     <ScrollViewer>
-      <StackPanel Spacing="12" Margin="0,12,0,0">
+      <!-- Right margin leaves room for the overlay scrollbar so it doesn't sit on top of
+           full-width controls like the Prompt TextBox. -->
+      <StackPanel Spacing="12" Margin="0,12,16,0">
 
         <TextBlock Text="Source images (0-8)" FontWeight="SemiBold" />
         <ItemsControl ItemsSource="{Binding Images}">
@@ -32,13 +34,16 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Content="Add images…" Command="{Binding AddImagesCommand}" />
-          <Button Content="Add from Assets…" Command="{Binding OpenAssetPickerCommand}" />
-          <Button Content="Paint mask on image #1" Command="{Binding OpenMaskEditorCommand}" IsEnabled="{Binding CanEditMask}" />
-          <Button Content="Clear mask" Command="{Binding ClearMaskCommand}" IsVisible="{Binding HasMask}" />
-          <TextBlock Text="Mask set ✓" VerticalAlignment="Center" IsVisible="{Binding HasMask}" Foreground="ForestGreen" />
-        </StackPanel>
+        <!-- WrapPanel, not StackPanel: these four buttons don't all fit on one line on a narrow
+             phone screen in portrait, so they need to wrap onto further lines instead of forcing
+             overflow. -->
+        <WrapPanel>
+          <Button Content="Add images…" Command="{Binding AddImagesCommand}" Margin="0,0,8,4" />
+          <Button Content="Add from Assets…" Command="{Binding OpenAssetPickerCommand}" Margin="0,0,8,4" />
+          <Button Content="Paint mask on image #1" Command="{Binding OpenMaskEditorCommand}" IsEnabled="{Binding CanEditMask}" Margin="0,0,8,4" />
+          <Button Content="Clear mask" Command="{Binding ClearMaskCommand}" IsVisible="{Binding HasMask}" Margin="0,0,8,4" />
+          <TextBlock Text="Mask set ✓" VerticalAlignment="Center" IsVisible="{Binding HasMask}" Foreground="ForestGreen" Margin="0,0,0,4" />
+        </WrapPanel>
 
         <TextBlock Text="Workflow" FontWeight="SemiBold" />
         <ComboBox ItemsSource="{Binding WorkflowOptions}" SelectedItem="{Binding SelectedWorkflowOption}"
@@ -46,6 +51,8 @@
                   ToolTip.Tip="Pin this run to a specific workflow instead of letting the LLM choose one. The list only offers workflows that fit the images/mask above." />
         <TextBlock Text="{Binding SelectedWorkflowOption.Description}" IsVisible="{Binding HasSelectedWorkflowDescription}"
                    TextWrapping="Wrap" Opacity="0.8" FontStyle="Italic" />
+        <TextBlock Text="No LLM is configured in Settings, so a specific workflow must be picked above — generation runs on Comfy only."
+                   IsVisible="{Binding !IsLlmConfigured}" Opacity="0.7" FontStyle="Italic" />
 
         <CheckBox Content="Refine prompt with LLM" IsChecked="{Binding RefinePromptWithLlm}"
                   IsEnabled="{Binding CanToggleRefinePrompt}"
@@ -121,12 +128,15 @@
                                     Opacity="0.55" />
             </Grid>
           </Viewbox>
-          <StackPanel Orientation="Horizontal" Spacing="10">
-            <TextBlock Text="Brush size" VerticalAlignment="Center" />
-            <Slider Minimum="4" Maximum="120" Value="{Binding BrushRadius}" Width="160" VerticalAlignment="Center" />
-            <ToggleButton Content="Erase" IsChecked="{Binding IsErasing}" />
-            <Button Content="Clear" Click="OnClearMaskCanvasClick" />
-          </StackPanel>
+          <!-- WrapPanel, not StackPanel: the label, slider, and two buttons don't all fit on one
+               line on a narrow phone screen in portrait, so they need to wrap instead of forcing
+               overflow. -->
+          <WrapPanel>
+            <TextBlock Text="Brush size" VerticalAlignment="Center" Margin="0,0,10,4" />
+            <Slider Minimum="4" Maximum="120" Value="{Binding BrushRadius}" Width="160" VerticalAlignment="Center" Margin="0,0,10,4" />
+            <ToggleButton Content="Erase" IsChecked="{Binding IsErasing}" Margin="0,0,10,4" />
+            <Button Content="Clear" Click="OnClearMaskCanvasClick" Margin="0,0,0,4" />
+          </WrapPanel>
           <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
             <Button Content="Cancel" Command="{Binding CloseMaskEditorCommand}" />
             <Button Content="Done" Click="OnConfirmMaskClick" />

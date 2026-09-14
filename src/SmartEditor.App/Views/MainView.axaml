@@ -42,13 +42,16 @@
   <Grid Background="{DynamicResource SystemChromeMediumColor}">
     <!-- Main content: header bar + editor tabs -->
     <Grid RowDefinitions="Auto,*" Margin="16">
-      <DockPanel Grid.Row="0" Margin="0,0,0,12">
-        <Button Content="Workflows" DockPanel.Dock="Right" Margin="8,0,0,0" Command="{Binding OpenWorkflowsCommand}" />
-        <Button Content="Settings" DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" />
-        <Button Content="🗂 Assets" DockPanel.Dock="Right" Margin="0,0,8,0" Command="{Binding OpenAssetsCommand}" />
-        <Button Content="+ New tab" DockPanel.Dock="Right" Margin="0,0,8,0" Command="{Binding AddTabCommand}" />
-        <TextBlock Text="SmartEditor" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
-      </DockPanel>
+      <!-- WrapPanel, not DockPanel: the title plus four buttons don't all fit on one line on a
+           narrow phone screen in portrait, so they need to wrap onto a second line instead of
+           forcing overflow. -->
+      <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+        <TextBlock Text="SmartEditor" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,4" />
+        <Button Content="+ New tab" Margin="0,0,8,4" Command="{Binding AddTabCommand}" />
+        <Button Content="🗂 Assets" Margin="0,0,8,4" Command="{Binding OpenAssetsCommand}" />
+        <Button Content="Settings" Margin="0,0,8,4" Command="{Binding OpenSettingsCommand}" />
+        <Button Content="Workflows" Margin="0,0,0,4" Command="{Binding OpenWorkflowsCommand}" />
+      </WrapPanel>
 
       <!-- No explicit ContentTemplate: the app-wide ViewLocator (see App.axaml) resolves each
            editor tab's content view by naming convention (EditorViewModel -> EditorView). Assets

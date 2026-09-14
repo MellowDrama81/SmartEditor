@@ -15,6 +15,7 @@ public partial class EditorViewModel : TabViewModelBase
     private readonly IEditSessionFactory _sessionFactory;
     private readonly IFilePickerService _filePicker;
     private readonly IWorkflowCatalog _workflowCatalog;
+    private readonly AppSettingsStore _settingsStore;
 
     private CancellationTokenSource? _runCts;
     private byte[]? _finalResultBytes;
@@ -70,11 +71,19 @@ public partial class EditorViewModel : TabViewModelBase
     public partial int MaxIterations { get; set; }
 
     /// <summary>Workflows the user can pin this run to, filtered by the exact same rule
-    /// (<see cref="WorkflowEligibility"/>) the LLM's own choices are restricted to &mdash; always
-    /// starts with the "let the LLM decide" sentinel (a <c>null</c> <see cref="WorkflowOptionViewModel.Workflow"/>),
-    /// which is also the default selection. Recomputed whenever the image count or mask presence
-    /// changes, since those are exactly what the eligibility rule depends on.</summary>
+    /// (<see cref="WorkflowEligibility"/>) the LLM's own choices are restricted to &mdash; starts
+    /// with the "let the LLM decide" sentinel (a <c>null</c> <see cref="WorkflowOptionViewModel.Workflow"/>)
+    /// only when <see cref="IsLlmConfigured"/>, since there's no LLM to hand that choice to
+    /// otherwise; that sentinel is also the default selection whenever it's present. Recomputed
+    /// whenever the image count or mask presence changes, since those are exactly what the
+    /// eligibility rule depends on.</summary>
     public ObservableCollection<WorkflowOptionViewModel> WorkflowOptions { get; } = [];
+
+    /// <summary>Whether an LLM provider is actually set up (see <see cref="AppSettings.IsLlmConfigured"/>).
+    /// Read live off <see cref="AppSettingsStore.Current"/> rather than cached, so a Settings change
+    /// takes effect the next time this is recomputed (see <see cref="RefreshWorkflowOptions"/>)
+    /// instead of requiring the tab to be reopened.</summary>
+    public bool IsLlmConfigured => _settingsStore.Current.IsLlmConfigured;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedWorkflowDescription))]
@@ -96,23 +105,28 @@ public partial class EditorViewModel : TabViewModelBase
     /// <summary>Whether the user is even asked to rewrite their prompt through the LLM before
     /// running &mdash; unchecking this only matters once a specific workflow is pinned (see
     /// <see cref="WillUseLlm"/>); while "let the LLM decide" is selected, the LLM is always needed
-    /// just to choose a workflow, so this has no effect and stays disabled.</summary>
+    /// just to choose a workflow, so this has no effect and stays disabled. Also has no effect (and
+    /// stays disabled) when <see cref="IsLlmConfigured"/> is false, since there's no LLM to refine
+    /// through in the first place.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WillUseLlm))]
     [NotifyPropertyChangedFor(nameof(IterationsLabel))]
     public partial bool RefinePromptWithLlm { get; set; } = true;
 
-    /// <summary>The checkbox only means anything once a specific workflow is pinned and that
-    /// workflow actually accepts a prompt &mdash; otherwise there's nothing for it to refine.</summary>
-    public bool CanToggleRefinePrompt => SelectedWorkflowOption?.Workflow is not null && PromptAccepted;
+    /// <summary>The checkbox only means anything once an LLM is configured and a specific workflow
+    /// is pinned and that workflow actually accepts a prompt &mdash; otherwise there's nothing for
+    /// it to refine, or nothing to refine it with.</summary>
+    public bool CanToggleRefinePrompt => IsLlmConfigured && SelectedWorkflowOption?.Workflow is not null && PromptAccepted;
 
-    /// <summary>Whether <c>Run</c> will call the LLM at all. False only when a specific workflow is
-    /// pinned AND its prompt won't be refined (either because the user unchecked
+    /// <summary>Whether <c>Run</c> will call the LLM at all. Always false when
+    /// <see cref="IsLlmConfigured"/> is false &mdash; generation then runs against whatever
+    /// workflow is pinned, Comfy-only, exactly as typed. Otherwise, false only when a specific
+    /// workflow is pinned AND its prompt won't be refined (either because the user unchecked
     /// <see cref="RefinePromptWithLlm"/>, or the workflow doesn't accept a prompt in the first
     /// place) &mdash; in that exact case there is nothing left for the LLM to decide, so Run skips
     /// it entirely and just submits the workflow with the prompt as typed. "Let the LLM decide"
     /// always needs the LLM to choose a workflow in the first place.</summary>
-    public bool WillUseLlm => SelectedWorkflowOption?.Workflow is null || (PromptAccepted && RefinePromptWithLlm);
+    public bool WillUseLlm => IsLlmConfigured && (SelectedWorkflowOption?.Workflow is null || (PromptAccepted && RefinePromptWithLlm));
 
     /// <summary>"Max retries" while the LLM's plan-run-judge loop is driving things (it stops early
     /// once judged satisfactory); once that's skipped (see <see cref="WillUseLlm"/>) there's no
@@ -134,6 +148,7 @@ public partial class EditorViewModel : TabViewModelBase
         _sessionFactory = sessionFactory;
         _filePicker = filePicker;
         _workflowCatalog = workflowCatalog;
+        _settingsStore = settingsStore;
         AssetLibrary = assetLibrary;
         MaxIterations = settingsStore.Current.MaxIterations;
         RefreshWorkflowOptions();
@@ -149,15 +164,21 @@ public partial class EditorViewModel : TabViewModelBase
 
         var eligible = WorkflowEligibility.Filter(_workflowCatalog.GetAll(), Images.Count, HasMask);
         WorkflowOptions.Clear();
-        WorkflowOptions.Add(new WorkflowOptionViewModel(null));
+        if (IsLlmConfigured)
+        {
+            WorkflowOptions.Add(new WorkflowOptionViewModel(null));
+        }
+
         foreach (var workflow in eligible)
         {
             WorkflowOptions.Add(new WorkflowOptionViewModel(workflow));
         }
 
         SelectedWorkflowOption = previouslySelectedId is not null
-            ? WorkflowOptions.FirstOrDefault(o => o.Workflow?.Id == previouslySelectedId) ?? WorkflowOptions[0]
-            : WorkflowOptions[0];
+            ? WorkflowOptions.FirstOrDefault(o => o.Workflow?.Id == previouslySelectedId) ?? WorkflowOptions.FirstOrDefault()
+            : WorkflowOptions.FirstOrDefault();
+
+        OnPropertyChanged(nameof(IsLlmConfigured));
     }
 
     [RelayCommand]
@@ -293,7 +314,8 @@ public partial class EditorViewModel : TabViewModelBase
         RefreshWorkflowOptions();
     }
 
-    private bool CanRun() => !IsRunning && (!PromptAccepted || !string.IsNullOrWhiteSpace(Prompt));
+    private bool CanRun() =>
+        !IsRunning && SelectedWorkflowOption is not null && (!PromptAccepted || !string.IsNullOrWhiteSpace(Prompt));
 
     [RelayCommand(CanExecute = nameof(CanRun))]
     private async Task RunAsync()

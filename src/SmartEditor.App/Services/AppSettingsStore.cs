@@ -34,6 +34,12 @@ public sealed record AppSettings
     public string LlmModel { get; init; } = "";
     public bool LlmSupportsJsonSchema { get; init; }
     public int MaxIterations { get; init; } = 3;
+
+    /// <summary>Whether an LLM provider is actually usable &mdash; the base URL alone always has a
+    /// default, so an API key and a model id are what actually distinguish "configured" from not.
+    /// Gates whether "let the LLM decide" and prompt refinement are offered at all; without this,
+    /// editor tabs fall back to Comfy-only generation against a pinned workflow.</summary>
+    public bool IsLlmConfigured => !string.IsNullOrWhiteSpace(LlmApiKey) && !string.IsNullOrWhiteSpace(LlmModel);
 }
 
 /// <summary>Loads/saves <see cref="AppSettings"/> to a local JSON file under the platform's
