@@ -1,14 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-android</TargetFramework>
+    <!-- Pinned to a specific API level (not just "net10.0-android") so the compiled/target SDK is
+         explicit and doesn't silently shift when a newer Android workload is installed. 36
+         (Android 16) matches Google Play's target API requirement for new/updated app submissions
+         as of August 31, 2026. -->
+    <TargetFramework>net10.0-android36.0</TargetFramework>
     <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ApplicationId>com.MellowProjects.SmartEditor</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Play Console requires an Android App Bundle, not a raw APK, for new app submissions. -->
+    <AndroidPackageFormat>aab</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+  </PropertyGroup>
+
+  <!-- Release signing: only wired up for Release builds, and only once the referenced
+       environment variables are actually set (e.g. in a local shell before `dotnet publish`, or
+       as CI secrets) — nothing here is a committed secret. Debug builds are unaffected and keep
+       using the default debug key; without these env vars set, a Release build/publish also
+       falls back to the debug key rather than failing. -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <AndroidSigningKeyStore>$(ANDROID_SIGNING_KEY_STORE)</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>$(ANDROID_SIGNING_KEY_ALIAS)</AndroidSigningKeyAlias>
+    <AndroidSigningKeyPass>$(ANDROID_SIGNING_KEY_PASS)</AndroidSigningKeyPass>
+    <AndroidSigningStorePass>$(ANDROID_SIGNING_STORE_PASS)</AndroidSigningStorePass>
   </PropertyGroup>
 
   <ItemGroup>

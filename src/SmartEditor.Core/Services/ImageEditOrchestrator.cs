@@ -126,6 +126,7 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                     RefinedPrompt = refinedPrompt,
                     PlannerReasoning = reasoning,
                     ResultImageBytes = runResult.ResultBytes,
+                    ResultOutputFilename = runResult.OutputFilename,
                     Satisfied = satisfied,
                     JudgeFeedback = feedback,
                 };

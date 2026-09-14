@@ -87,7 +87,8 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
             var outputs = await WaitForCompletionAsync(promptId, ct);
             var (filename, subfolder, type) = ReadOutputImageRef(outputs, workflow.Id);
             var bytes = await FetchImageAsync(filename, subfolder, type, ct);
-            return new ComfyRunResult(bytes, uploaded);
+            var outputRef = string.IsNullOrEmpty(subfolder) ? filename : $"{subfolder}/{filename}";
+            return new ComfyRunResult(bytes, uploaded, outputRef);
         }
         finally
         {

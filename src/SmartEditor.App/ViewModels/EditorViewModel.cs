@@ -375,7 +375,8 @@ public partial class EditorViewModel : TabViewModelBase
             // next iteration, and any failure is reported on the Assets tab's own status.
             if (iteration.ResultImageBytes is { } resultBytes)
             {
-                _ = AssetLibrary.AddGeneratedResultAsync(resultBytes, $"result-{DateTime.Now:yyyyMMdd-HHmmss}-{iteration.Index}.png");
+                _ = AssetLibrary.AddGeneratedResultAsync(
+                    resultBytes, $"result-{DateTime.Now:yyyyMMdd-HHmmss}-{iteration.Index}.png", iteration.ResultOutputFilename);
             }
         });
 
@@ -427,11 +428,13 @@ public partial class EditorViewModel : TabViewModelBase
                 RefinedPrompt = Prompt,
                 PlannerReasoning = "",
                 ResultImageBytes = runResult.ResultBytes,
+                ResultOutputFilename = runResult.OutputFilename,
                 Satisfied = true,
                 JudgeFeedback = "Generated without LLM judging.",
             };
             History.Add(new IterationDisplayViewModel(iteration));
-            _ = AssetLibrary.AddGeneratedResultAsync(runResult.ResultBytes, $"result-{DateTime.Now:yyyyMMdd-HHmmss}-{i}.png");
+            _ = AssetLibrary.AddGeneratedResultAsync(
+                runResult.ResultBytes, $"result-{DateTime.Now:yyyyMMdd-HHmmss}-{i}.png", runResult.OutputFilename);
 
             _finalResultBytes = runResult.ResultBytes;
             using var stream = new MemoryStream(runResult.ResultBytes);

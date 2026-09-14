@@ -22,6 +22,15 @@ public partial class AssetsViewModel : TabViewModelBase
     private string? _nextCursor;
     private bool _hasMore = true;
 
+    /// <summary>Backend output-asset filename &#8594; the filename of our own reupload of that exact
+    /// same result (see <see cref="AddGeneratedResultAsync"/>), populated as soon as a result is
+    /// generated. On Comfy Cloud, listing (<see cref="LoadPageAsync"/>) surfaces the workflow run's
+    /// own "output"-tagged asset as its own entry, in addition to the "input"-tagged reupload we
+    /// make for immediate browsing/reuse &mdash; without this, both show up as separate, visually
+    /// identical rows. Session-scoped only (not persisted): it exists to collapse a duplicate at
+    /// the moment it's created, not to clean up ones already sitting in the account from before.</summary>
+    private readonly Dictionary<string, string> _duplicateOutputFilenames = new(StringComparer.Ordinal);
+
     [ObservableProperty] public partial bool IsImageViewerOpen { get; set; }
     [ObservableProperty] public partial AssetItemViewModel? ViewedImage { get; set; }
     [ObservableProperty] public partial bool IsActualSize { get; set; }
@@ -175,6 +184,14 @@ public partial class AssetsViewModel : TabViewModelBase
         var newItems = new List<AssetItemViewModel>(page.Assets.Count);
         foreach (var asset in page.Assets)
         {
+            if (_duplicateOutputFilenames.TryGetValue(asset.Name, out var reuploadFilename))
+            {
+                // Comfy's own native copy of a result we already show under our reupload's
+                // filename — collapse into that one row instead of adding a second.
+                MergeOrphanedTags(fromFilename: asset.Name, intoFilename: reuploadFilename);
+                continue;
+            }
+
             var item = new AssetItemViewModel(asset, _tagsStore);
             Assets.Add(item);
             newItems.Add(item);
@@ -284,18 +301,59 @@ public partial class AssetsViewModel : TabViewModelBase
     /// trusts an asset's <see cref="AssetItemViewModel.Filename"/> to already exist on the backend
     /// and skips re-uploading it, so a fabricated filename would break a later run that reused this
     /// result as a source image.</summary>
-    public async Task AddGeneratedResultAsync(byte[] bytes, string displayName)
+    /// <param name="outputFilename">The same result's own identity as produced by the workflow run
+    /// itself (<see cref="EditIteration.ResultOutputFilename"/>) &mdash; recorded so a later listing
+    /// refresh can recognize Comfy's native copy of this same result as a duplicate of the reupload
+    /// below and collapse the two into one row instead of showing both.</param>
+    public async Task AddGeneratedResultAsync(byte[] bytes, string displayName, string? outputFilename)
     {
         try
         {
             var comfy = _sessionFactory.CreateComfyClient();
             var name = await comfy.UploadInputAssetAsync(bytes, displayName, CancellationToken.None);
+            if (!string.IsNullOrEmpty(outputFilename))
+            {
+                _duplicateOutputFilenames[outputFilename] = name;
+            }
+
             InsertAtFront(name, displayName, bytes);
         }
         catch (Exception ex)
         {
             StatusMessage = $"Could not add the generated result to the asset library: {ex.Message}";
         }
+    }
+
+    /// <summary>Moves any tags stored under a duplicate entry we're about to collapse away (see
+    /// <see cref="_duplicateOutputFilenames"/>) onto the entry that survives instead of silently
+    /// dropping them &mdash; normally a no-op, since the user only ever sees/tags the surviving
+    /// entry in the first place, but a listing refresh can in principle observe the native output
+    /// asset before <see cref="AddGeneratedResultAsync"/>'s own insert has landed, and it's cheap
+    /// to be safe.</summary>
+    private void MergeOrphanedTags(string fromFilename, string intoFilename)
+    {
+        var orphaned = _tagsStore.GetTags(fromFilename);
+        if (orphaned.Count == 0)
+        {
+            return;
+        }
+
+        var survivor = Assets.FirstOrDefault(a => a.Filename == intoFilename);
+        var merged = (survivor?.Tags ?? _tagsStore.GetTags(intoFilename))
+            .Concat(orphaned)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (survivor is not null)
+        {
+            survivor.TagsText = string.Join(", ", merged); // also persists, via OnTagsTextChanged
+        }
+        else
+        {
+            _tagsStore.SetTags(intoFilename, merged);
+        }
+
+        _tagsStore.SetTags(fromFilename, []); // clears the now-merged, never-shown-again entry
     }
 
     /// <summary>Inserts an asset that's already been uploaded elsewhere (e.g. a source image

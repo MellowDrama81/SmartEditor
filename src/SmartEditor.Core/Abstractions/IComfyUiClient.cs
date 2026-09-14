@@ -10,9 +10,17 @@ public sealed class ComfyWorkflowException : Exception
     public ComfyWorkflowException(string message, Exception inner) : base(message, inner) { }
 }
 
+/// <param name="OutputFilename">The result image's own storage identity on the backend (as
+/// produced by the workflow run itself, tagged "output" there) &mdash; <c>subfolder/filename</c>
+/// when a subfolder was reported, otherwise just <c>filename</c>. Comfy Cloud's asset listing
+/// (<see cref="IComfyUiClient.ListInputAssetsPageAsync"/>) surfaces this same asset again as its
+/// own browsable entry, distinct from any separate copy a caller might upload elsewhere (e.g. to
+/// make the result reusable as a new source image) &mdash; callers that do both can use this to
+/// recognize the two as the same underlying result and avoid showing it twice.</param>
 public sealed record ComfyRunResult(
     byte[] ResultBytes,
-    IReadOnlyDictionary<Guid, string> UploadedImageNames);
+    IReadOnlyDictionary<Guid, string> UploadedImageNames,
+    string OutputFilename);
 
 /// <summary>One page of <see cref="IComfyUiClient.ListInputAssetsPageAsync"/>. <see cref="NextCursor"/>
 /// is <c>null</c> once there is nothing more to fetch (pass it back in to get the following page,

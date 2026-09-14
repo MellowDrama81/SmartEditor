@@ -13,3 +13,7 @@ obj/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Android release signing key — never commit this
+*.keystore
+*.jks

@@ -6,7 +6,7 @@ using Avalonia.Android;
 namespace SmartEditor.App.Android;
 
 [Activity(
-    Label = "SmartEditor.App.Android",
+    Label = "SmartEditor",
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/smarteditor",
     MainLauncher = true,

@@ -29,7 +29,7 @@ internal sealed class FakeComfyUiClient : IComfyUiClient
         ReceivedRequests.Add(request);
 
         var uploaded = alreadyUploaded ?? request.Images.ToDictionary(i => i.Id, i => $"uploaded-{i.Id:N}.png");
-        return Task.FromResult(new ComfyRunResult(_resultFactory(CallCount), uploaded));
+        return Task.FromResult(new ComfyRunResult(_resultFactory(CallCount), uploaded, $"output-{CallCount}.png"));
     }
 
     public List<AssetInfo> Assets { get; } = [];
