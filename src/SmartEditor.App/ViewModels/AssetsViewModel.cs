@@ -22,14 +22,20 @@ public partial class AssetsViewModel : TabViewModelBase
     private string? _nextCursor;
     private bool _hasMore = true;
 
-    /// <summary>Backend output-asset filename &#8594; the filename of our own reupload of that exact
-    /// same result (see <see cref="AddGeneratedResultAsync"/>), populated as soon as a result is
-    /// generated. On Comfy Cloud, listing (<see cref="LoadPageAsync"/>) surfaces the workflow run's
-    /// own "output"-tagged asset as its own entry, in addition to the "input"-tagged reupload we
-    /// make for immediate browsing/reuse &mdash; without this, both show up as separate, visually
-    /// identical rows. Session-scoped only (not persisted): it exists to collapse a duplicate at
-    /// the moment it's created, not to clean up ones already sitting in the account from before.</summary>
-    private readonly Dictionary<string, string> _duplicateOutputFilenames = new(StringComparer.Ordinal);
+    /// <summary>Backend output-asset filename &#8596; the filename of our own reupload of that exact
+    /// same result (see <see cref="AddGeneratedResultAsync"/>), populated in both directions as
+    /// soon as a result is generated. On Comfy Cloud, listing (<see cref="LoadPageAsync"/>)
+    /// surfaces the workflow run's own "output"-tagged asset as its own entry, in addition to the
+    /// "input"-tagged reupload we make for immediate browsing/reuse &mdash; without this, both show
+    /// up as separate, visually identical rows. The two are separately-created, separately-paged
+    /// assets, so either one can be fetched before the other (or the other might never be fetched
+    /// at all, if it lands on a page the user never scrolls to) &mdash; <see cref="TryFindDuplicateAlreadyShown"/>
+    /// only ever collapses into a counterpart that's already on screen, so an asset is never simply
+    /// hidden on the assumption its replacement is showing when it might not be. Session-scoped
+    /// only (not persisted): it exists to collapse a duplicate at the moment it's created, not to
+    /// clean up ones already sitting in the account from before.</summary>
+    private readonly Dictionary<string, string> _outputToReupload = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _reuploadToOutput = new(StringComparer.Ordinal);
 
     [ObservableProperty] public partial bool IsImageViewerOpen { get; set; }
     [ObservableProperty] public partial AssetItemViewModel? ViewedImage { get; set; }
@@ -184,11 +190,12 @@ public partial class AssetsViewModel : TabViewModelBase
         var newItems = new List<AssetItemViewModel>(page.Assets.Count);
         foreach (var asset in page.Assets)
         {
-            if (_duplicateOutputFilenames.TryGetValue(asset.Name, out var reuploadFilename))
+            if (TryFindDuplicateAlreadyShown(asset.Name, out var survivorFilename))
             {
                 // Comfy's own native copy of a result we already show under our reupload's
-                // filename — collapse into that one row instead of adding a second.
-                MergeOrphanedTags(fromFilename: asset.Name, intoFilename: reuploadFilename);
+                // filename (or vice versa) — collapse into that already-shown row instead of
+                // adding a second, rather than hiding this one outright.
+                MergeOrphanedTags(fromFilename: asset.Name, intoFilename: survivorFilename);
                 continue;
             }
 
@@ -313,7 +320,8 @@ public partial class AssetsViewModel : TabViewModelBase
             var name = await comfy.UploadInputAssetAsync(bytes, displayName, CancellationToken.None);
             if (!string.IsNullOrEmpty(outputFilename))
             {
-                _duplicateOutputFilenames[outputFilename] = name;
+                _outputToReupload[outputFilename] = name;
+                _reuploadToOutput[name] = outputFilename;
             }
 
             InsertAtFront(name, displayName, bytes);
@@ -324,12 +332,33 @@ public partial class AssetsViewModel : TabViewModelBase
         }
     }
 
-    /// <summary>Moves any tags stored under a duplicate entry we're about to collapse away (see
-    /// <see cref="_duplicateOutputFilenames"/>) onto the entry that survives instead of silently
-    /// dropping them &mdash; normally a no-op, since the user only ever sees/tags the surviving
-    /// entry in the first place, but a listing refresh can in principle observe the native output
-    /// asset before <see cref="AddGeneratedResultAsync"/>'s own insert has landed, and it's cheap
-    /// to be safe.</summary>
+    /// <summary>True only if <paramref name="filename"/> is a known duplicate of some other
+    /// filename representing the exact same generated result AND that counterpart is already
+    /// shown in <see cref="Assets"/> &mdash; in which case <paramref name="survivorFilename"/> is
+    /// that counterpart. Deliberately does NOT report a duplicate just because a mapping exists:
+    /// the two sides of a pair are fetched independently (possibly on different pages, possibly
+    /// one not at all), so assuming the counterpart is showing without checking would hide an
+    /// asset that has nothing already on screen to collapse into.</summary>
+    private bool TryFindDuplicateAlreadyShown(string filename, out string survivorFilename)
+    {
+        if (_outputToReupload.TryGetValue(filename, out var reupload) && Assets.Any(a => a.Filename == reupload))
+        {
+            survivorFilename = reupload;
+            return true;
+        }
+
+        if (_reuploadToOutput.TryGetValue(filename, out var output) && Assets.Any(a => a.Filename == output))
+        {
+            survivorFilename = output;
+            return true;
+        }
+
+        survivorFilename = "";
+        return false;
+    }
+
+    /// <summary>Moves any tags stored under a duplicate entry we're about to collapse away onto
+    /// the entry that survives instead of silently dropping them.</summary>
     private void MergeOrphanedTags(string fromFilename, string intoFilename)
     {
         var orphaned = _tagsStore.GetTags(fromFilename);
