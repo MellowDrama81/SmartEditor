@@ -9,7 +9,7 @@
     <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ApplicationId>com.mellow.smarteditor</ApplicationId>
-    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationVersion>3</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <!-- Play Console requires an Android App Bundle, not a raw APK, for new app submissions. -->
     <AndroidPackageFormat>aab</AndroidPackageFormat>
