@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="using:SmartEditor.App.Controls"
+             xmlns:conv="using:SmartEditor.App.Converters"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
              x:CompileBindings="False"
              x:Class="SmartEditor.App.Views.EditorView">
@@ -178,9 +179,15 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border Width="140" Margin="4" Padding="6" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                    <!-- Width is normally TwoColumnThumbnailWidthConverter.PreferredWidth (176) —
+                         the converter only shrinks it, bound off the scroll container's own live
+                         width, when that full size wouldn't otherwise leave room for a second
+                         column (a narrow phone in portrait). Same converter the main Assets tab's
+                         grid uses, so both browse at the same size whenever there's room. -->
+                    <Border Width="{Binding $parent[ScrollViewer].Bounds.Width, Converter={x:Static conv:TwoColumnThumbnailWidthConverter.Instance}}"
+                            Margin="4" Padding="6" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
                       <StackPanel Spacing="4">
-                        <Grid Height="90">
+                        <Grid Height="120">
                           <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
                           <TextBlock Text="Loading…" IsVisible="{Binding IsLoadingThumbnail}"
                                      HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6" FontSize="10" />
