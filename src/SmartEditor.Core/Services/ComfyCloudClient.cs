@@ -16,7 +16,8 @@ namespace SmartEditor.Core.Services;
 /// 302-redirects to a signed, time-limited <c>storage.googleapis.com</c> URL. The redirect is
 /// followed manually (the injected <see cref="HttpClient"/> must have automatic redirects
 /// disabled) so the API key header is never forwarded to that third-party host. No WebSocket is
-/// available on Cloud, so progress reporting is not implemented for this backend.</summary>
+/// available on Cloud, so percentage progress reporting is not implemented for this backend. The
+/// caller can still report that generation has started as soon as the job is submitted.</summary>
 public sealed class ComfyCloudClient : ComfyUiClientBase
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
@@ -113,9 +114,11 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
         return promptId;
     }
 
-    protected override async Task<JsonNode> WaitForCompletionAsync(string promptId, CancellationToken ct)
+    protected override async Task<JsonNode> WaitForCompletionAsync(
+        string promptId, IProgress<ComfyJobState>? jobState, IProgress<ComfyJobUpdate>? jobUpdates, CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + MaxWait;
+        ComfyJobState? lastReportedState = null;
 
         while (true)
         {
@@ -132,6 +135,19 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
                     var responseText = await response.Content.ReadAsStringAsync(ct);
                     var root = JsonNode.Parse(responseText);
                     var status = root?["status"]?.GetValue<string>();
+
+                    ComfyJobState? observedState = status switch
+                    {
+                        "waiting_to_dispatch" or "pending" => ComfyJobState.Queued,
+                        "in_progress" => ComfyJobState.Generating,
+                        _ => null,
+                    };
+                    if (observedState is { } state && state != lastReportedState)
+                    {
+                        jobState?.Report(state);
+                        jobUpdates?.Report(new ComfyJobUpdate(state, promptId));
+                        lastReportedState = state;
+                    }
 
                     switch (status)
                     {
@@ -163,6 +179,15 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
 
             await Task.Delay(PollInterval, ct);
         }
+    }
+
+    public override async Task<ComfyRunResult> RecoverWorkflowAsync(string jobId, CancellationToken ct)
+    {
+        var outputs = await WaitForCompletionAsync(jobId, jobState: null, jobUpdates: null, ct);
+        var (filename, subfolder, type) = ReadOutputImageRef(outputs, "recovered Comfy Cloud job");
+        var bytes = await FetchImageAsync(filename, subfolder, type, ct);
+        var outputRef = string.IsNullOrEmpty(subfolder) ? filename : $"{subfolder}/{filename}";
+        return new ComfyRunResult(bytes, new Dictionary<Guid, string>(), outputRef);
     }
 
     protected override async Task<byte[]> FetchImageAsync(string filename, string subfolder, string type, CancellationToken ct)

@@ -35,13 +35,21 @@ public interface IComfyUiClient
     /// iteration in the same session, so unchanged source images aren't re-uploaded.</param>
     /// <param name="progress">Optional 0.0-1.0 progress reporter (best-effort, via ComfyUI's
     /// WebSocket feed &mdash; never relied on for completion detection).</param>
+    /// <param name="jobState">Optional coarse job-state reporter. Comfy Cloud reports queued and
+    /// running states while polling; self-hosted ComfyUI only reports that submission succeeded.</param>
     Task<ComfyRunResult> RunWorkflowAsync(
         WorkflowDefinition workflow,
         EditRequest request,
         string refinedPrompt,
         IReadOnlyDictionary<Guid, string>? alreadyUploaded,
         IProgress<double>? progress,
-        CancellationToken ct);
+        CancellationToken ct,
+        IProgress<ComfyJobState>? jobState = null,
+        IProgress<ComfyJobUpdate>? jobUpdates = null);
+
+    /// <summary>Waits for an already-submitted Comfy Cloud job and returns its output. Self-hosted
+    /// ComfyUI cannot reliably recover jobs after an app restart and returns an unsupported error.</summary>
+    Task<ComfyRunResult> RecoverWorkflowAsync(string jobId, CancellationToken ct);
 
     /// <summary>Fetches one page of every browsable image currently sitting on the backend &mdash;
     /// both uploaded source images (the <c>input</c> store) and prior generation results

@@ -16,6 +16,8 @@ public partial class EditorViewModel : TabViewModelBase
     private readonly IFilePickerService _filePicker;
     private readonly IWorkflowCatalog _workflowCatalog;
     private readonly AppSettingsStore _settingsStore;
+    private readonly IGenerationKeepAlive _generationKeepAlive;
+    private readonly GenerationRecoveryService _generationRecovery;
 
     private CancellationTokenSource? _runCts;
     private byte[]? _finalResultBytes;
@@ -142,13 +144,16 @@ public partial class EditorViewModel : TabViewModelBase
 
     public EditorViewModel(
         IEditSessionFactory sessionFactory, IFilePickerService filePicker, AssetsViewModel assetLibrary,
-        AppSettingsStore settingsStore, IWorkflowCatalog workflowCatalog)
+        AppSettingsStore settingsStore, IWorkflowCatalog workflowCatalog, IGenerationKeepAlive generationKeepAlive,
+        GenerationRecoveryService generationRecovery)
         : base("Untitled", isClosable: true)
     {
         _sessionFactory = sessionFactory;
         _filePicker = filePicker;
         _workflowCatalog = workflowCatalog;
         _settingsStore = settingsStore;
+        _generationKeepAlive = generationKeepAlive;
+        _generationRecovery = generationRecovery;
         AssetLibrary = assetLibrary;
         MaxIterations = settingsStore.Current.MaxIterations;
         RefreshWorkflowOptions();
@@ -325,6 +330,7 @@ public partial class EditorViewModel : TabViewModelBase
         FinalResult = null;
         _finalResultBytes = null;
         StatusMessage = WillUseLlm ? "Planning..." : "Generating...";
+        _generationKeepAlive.Start(StatusMessage);
         _runCts = new CancellationTokenSource();
 
         try
@@ -353,6 +359,7 @@ public partial class EditorViewModel : TabViewModelBase
         }
         finally
         {
+            _generationKeepAlive.Stop();
             IsRunning = false;
             _runCts?.Dispose();
             _runCts = null;
@@ -364,23 +371,53 @@ public partial class EditorViewModel : TabViewModelBase
         var orchestrator = _sessionFactory.CreateOrchestrator(Math.Clamp(MaxIterations, 1, OrchestratorOptions.HardMaxIterations));
         var progress = new Progress<EditIteration>(iteration =>
         {
-            History.Add(new IterationDisplayViewModel(iteration));
-            StatusMessage = iteration.Satisfied
-                ? $"Iteration {iteration.Index}: satisfied."
-                : $"Iteration {iteration.Index}: not satisfied — {iteration.JudgeFeedback}";
-
-            // Every produced output goes to the asset library as it happens, not just the
-            // run's final pick — an earlier, unsatisfied-but-still-useful iteration shouldn't
-            // require re-running to get back. Fire-and-forget: the upload shouldn't hold up the
-            // next iteration, and any failure is reported on the Assets tab's own status.
-            if (iteration.ResultImageBytes is { } resultBytes)
+            var existing = History.FirstOrDefault(item => item.Index == iteration.Index);
+            if (existing is null)
             {
-                _ = AssetLibrary.AddGeneratedResultAsync(
-                    resultBytes, $"result-{DateTime.Now:yyyyMMdd-HHmmss}-{iteration.Index}.png", iteration.ResultOutputFilename);
+                History.Add(new IterationDisplayViewModel(iteration));
+
+                // Every produced output goes to the asset library as it happens, not just the
+                // run's final pick — an earlier, unsatisfied-but-still-useful iteration shouldn't
+                // require re-running to get back. Fire-and-forget: the upload shouldn't hold up
+                // the evaluation, and any failure is reported on the Assets tab's own status.
+                if (iteration.ResultImageBytes is { } resultBytes)
+                {
+                    _ = AssetLibrary.AddGeneratedResultAsync(
+                        resultBytes, $"result-{DateTime.Now:yyyyMMdd-HHmmss}-{iteration.Index}.png", iteration.ResultOutputFilename);
+                }
             }
+            else
+            {
+                History[History.IndexOf(existing)] = new IterationDisplayViewModel(iteration);
+            }
+
+            StatusMessage = iteration.JudgeFeedback == "Evaluating result..."
+                ? $"Reviewing image {iteration.Index}..."
+                : iteration.Satisfied
+                    ? $"Iteration {iteration.Index}: satisfied."
+                    : $"Iteration {iteration.Index}: not satisfied — {iteration.JudgeFeedback}";
+            _generationKeepAlive.Update(StatusMessage);
         });
 
-        var session = await orchestrator.RunAsync(request, progress, ct, _uploadedAssetNames, SelectedWorkflowOption?.Workflow);
+        var runProgress = new Progress<EditRunProgress>(update =>
+        {
+            StatusMessage = update.Stage switch
+            {
+                EditRunStage.Planning => $"Planning iteration {update.Iteration}...",
+                EditRunStage.Queued => $"Image {update.Iteration} is queued...",
+                EditRunStage.Generating when update.Completion is > 0 =>
+                    $"Generating image {update.Iteration} ({update.Completion.Value:P0})...",
+                EditRunStage.Generating => $"Generating image {update.Iteration}...",
+                EditRunStage.Judging => $"Reviewing image {update.Iteration}...",
+                _ => StatusMessage,
+            };
+            _generationKeepAlive.Update(StatusMessage);
+        });
+
+        var jobUpdates = new Progress<ComfyJobUpdate>(update => _ = _generationRecovery.TrackAsync(update));
+
+        var session = await orchestrator.RunAsync(
+            request, progress, ct, _uploadedAssetNames, SelectedWorkflowOption?.Workflow, runProgress, jobUpdates);
 
         if (session.FinalResultBytes is { } bytes)
         {
@@ -416,6 +453,7 @@ public partial class EditorViewModel : TabViewModelBase
         {
             ct.ThrowIfCancellationRequested();
             StatusMessage = $"Generating {i}/{runCount}...";
+            _generationKeepAlive.Update(StatusMessage);
 
             ComfyRunResult runResult;
             try
@@ -467,6 +505,33 @@ public partial class EditorViewModel : TabViewModelBase
 
     [RelayCommand]
     private void Cancel() => _runCts?.Cancel();
+
+    [RelayCommand]
+    private void ViewIteration(IterationDisplayViewModel iteration)
+    {
+        if (iteration.ResultImageBytes is not { } bytes)
+        {
+            return;
+        }
+
+        _finalResultBytes = bytes;
+        using var stream = new MemoryStream(bytes);
+        FinalResult = new Bitmap(stream);
+        StatusMessage = $"Viewing iteration {iteration.Index}.";
+    }
+
+    [RelayCommand]
+    private async Task DownloadIterationAsync(IterationDisplayViewModel iteration)
+    {
+        if (iteration.ResultImageBytes is not { } bytes)
+        {
+            return;
+        }
+
+        var fileName = iteration.OutputFilename ?? $"smarteditor-iteration-{iteration.Index}.png";
+        var saved = await _filePicker.SaveFileAsync(bytes, fileName);
+        StatusMessage = saved ? $"Saved iteration {iteration.Index}." : StatusMessage;
+    }
 
     [RelayCommand]
     private async Task SaveResultAsync()

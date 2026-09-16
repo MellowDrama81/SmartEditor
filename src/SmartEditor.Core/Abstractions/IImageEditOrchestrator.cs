@@ -21,5 +21,7 @@ public interface IImageEditOrchestrator
         IProgress<EditIteration>? progress,
         CancellationToken ct,
         IReadOnlyDictionary<Guid, string>? alreadyUploaded = null,
-        WorkflowDefinition? forcedWorkflow = null);
+        WorkflowDefinition? forcedWorkflow = null,
+        IProgress<EditRunProgress>? runProgress = null,
+        IProgress<ComfyJobUpdate>? jobUpdates = null);
 }

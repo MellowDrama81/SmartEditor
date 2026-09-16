@@ -97,6 +97,14 @@
                     <TextBlock Text="{Binding RefinedPrompt}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding JudgeFeedback}" TextWrapping="Wrap" FontStyle="Italic" Opacity="0.8" />
                     <TextBlock Text="Satisfied" Foreground="ForestGreen" IsVisible="{Binding Satisfied}" FontWeight="Bold" />
+                    <WrapPanel IsVisible="{Binding HasResult}" Margin="0,4,0,0">
+                      <Button Content="View" Margin="0,0,8,0"
+                              Command="{Binding $parent[ItemsControl].DataContext.ViewIterationCommand}"
+                              CommandParameter="{Binding}" />
+                      <Button Content="Download"
+                              Command="{Binding $parent[ItemsControl].DataContext.DownloadIterationCommand}"
+                              CommandParameter="{Binding}" />
+                    </WrapPanel>
                   </StackPanel>
                 </StackPanel>
               </Border>
@@ -104,7 +112,7 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <TextBlock Text="Result" FontWeight="SemiBold" IsVisible="{Binding HasFinalResult}" />
+        <TextBlock Text="Selected result" FontWeight="SemiBold" IsVisible="{Binding HasFinalResult}" />
         <Image Source="{Binding FinalResult}" MaxHeight="420" Stretch="Uniform" HorizontalAlignment="Left"
                IsVisible="{Binding HasFinalResult}" />
         <Button Content="Save result…" Command="{Binding SaveResultCommand}" IsVisible="{Binding HasFinalResult}" />

@@ -25,7 +25,9 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
         string refinedPrompt,
         IReadOnlyDictionary<Guid, string>? alreadyUploaded,
         IProgress<double>? progress,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<ComfyJobState>? jobState = null,
+        IProgress<ComfyJobUpdate>? jobUpdates = null)
     {
         var uploaded = new Dictionary<Guid, string>(alreadyUploaded ?? new Dictionary<Guid, string>());
         var imagesToBind = request.Images.Take(workflow.Capabilities.MaxImages).ToList();
@@ -81,14 +83,26 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
             ? Task.CompletedTask
             : ReportProgressAsync(clientId, progress, progressCts.Token);
 
+        string? promptId = null;
         try
         {
-            var promptId = await SubmitPromptAsync(graph, clientId, ct);
-            var outputs = await WaitForCompletionAsync(promptId, ct);
+            promptId = await SubmitPromptAsync(graph, clientId, ct);
+            jobState?.Report(ComfyJobState.Queued);
+            jobUpdates?.Report(new ComfyJobUpdate(ComfyJobState.Queued, promptId));
+            var outputs = await WaitForCompletionAsync(promptId, jobState, jobUpdates, ct);
             var (filename, subfolder, type) = ReadOutputImageRef(outputs, workflow.Id);
             var bytes = await FetchImageAsync(filename, subfolder, type, ct);
             var outputRef = string.IsNullOrEmpty(subfolder) ? filename : $"{subfolder}/{filename}";
+            jobUpdates?.Report(new ComfyJobUpdate(ComfyJobState.Completed, promptId));
             return new ComfyRunResult(bytes, uploaded, outputRef);
+        }
+        catch
+        {
+            if (promptId is not null)
+            {
+                jobUpdates?.Report(new ComfyJobUpdate(ComfyJobState.Failed, promptId));
+            }
+            throw;
         }
         finally
         {
@@ -109,6 +123,9 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
 
     public Task<byte[]> DownloadInputAssetAsync(string filename, CancellationToken ct) =>
         FetchImageAsync(filename, subfolder: "", type: "input", ct);
+
+    public virtual Task<ComfyRunResult> RecoverWorkflowAsync(string jobId, CancellationToken ct) =>
+        throw new NotSupportedException("This ComfyUI backend cannot recover jobs after the app restarts.");
 
     /// <summary>Default (self-hosted) implementation: falls back to the <c>LoadImage</c> node's
     /// own dropdown, since there's no dedicated asset-listing API there. <see cref="ComfyCloudClient"/>
@@ -155,7 +172,8 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
 
     protected abstract Task<string> SubmitPromptAsync(JsonNode graph, string clientId, CancellationToken ct);
 
-    protected abstract Task<JsonNode> WaitForCompletionAsync(string promptId, CancellationToken ct);
+    protected abstract Task<JsonNode> WaitForCompletionAsync(
+        string promptId, IProgress<ComfyJobState>? jobState, IProgress<ComfyJobUpdate>? jobUpdates, CancellationToken ct);
 
     protected abstract Task<byte[]> FetchImageAsync(string filename, string subfolder, string type, CancellationToken ct);
 
@@ -202,7 +220,7 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
     [GeneratedRegex(@"\{\{[A-Z0-9_]+:\w+\}\}")]
     private static partial Regex PlaceholderTokenRegex();
 
-    private static (string Filename, string Subfolder, string Type) ReadOutputImageRef(JsonNode outputs, string workflowId)
+    protected static (string Filename, string Subfolder, string Type) ReadOutputImageRef(JsonNode outputs, string workflowId)
     {
         foreach (var property in outputs.AsObject())
         {

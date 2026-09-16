@@ -33,7 +33,9 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
         IProgress<EditIteration>? progress,
         CancellationToken ct,
         IReadOnlyDictionary<Guid, string>? alreadyUploaded = null,
-        WorkflowDefinition? forcedWorkflow = null)
+        WorkflowDefinition? forcedWorkflow = null,
+        IProgress<EditRunProgress>? runProgress = null,
+        IProgress<ComfyJobUpdate>? jobUpdates = null)
     {
         var session = new EditSession { Request = request };
         IReadOnlyDictionary<Guid, string>? uploadedImages = alreadyUploaded;
@@ -44,6 +46,7 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
             for (var i = 1; i <= _maxIterations; i++)
             {
                 ct.ThrowIfCancellationRequested();
+                runProgress?.Report(new EditRunProgress(EditRunStage.Planning, i));
 
                 WorkflowDefinition workflow;
                 string refinedPrompt;
@@ -99,7 +102,17 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                 ComfyRunResult runResult;
                 try
                 {
-                    runResult = await _comfy.RunWorkflowAsync(workflow, runRequest, refinedPrompt, uploadedImages, null, ct);
+                    runProgress?.Report(new EditRunProgress(EditRunStage.Generating, i, 0));
+                    var comfyProgress = runProgress is null
+                        ? null
+                        : new Progress<double>(completion =>
+                            runProgress.Report(new EditRunProgress(EditRunStage.Generating, i, completion)));
+                    var comfyJobState = runProgress is null
+                        ? null
+                        : new Progress<ComfyJobState>(state => runProgress.Report(new EditRunProgress(
+                            state == ComfyJobState.Queued ? EditRunStage.Queued : EditRunStage.Generating, i)));
+                    runResult = await _comfy.RunWorkflowAsync(
+                        workflow, runRequest, refinedPrompt, uploadedImages, comfyProgress, ct, comfyJobState, jobUpdates);
                 }
                 catch (ComfyWorkflowException ex)
                 {
@@ -127,10 +140,27 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
 
                 uploadedImages = runResult.UploadedImageNames;
 
+                // Publish the image before asking the LLM to judge it. Judging can be relatively
+                // slow, and the user should be able to inspect/download a completed render while
+                // that evaluation is still underway. The second report below replaces this same
+                // iteration in the UI with the eventual judgement.
+                progress?.Report(new EditIteration
+                {
+                    Index = i,
+                    WorkflowId = workflow.Id,
+                    RefinedPrompt = refinedPrompt,
+                    PlannerReasoning = reasoning,
+                    ResultImageBytes = runResult.ResultBytes,
+                    ResultOutputFilename = runResult.OutputFilename,
+                    Satisfied = false,
+                    JudgeFeedback = "Evaluating result...",
+                });
+
                 bool satisfied;
                 string feedback;
                 try
                 {
+                    runProgress?.Report(new EditRunProgress(EditRunStage.Judging, i));
                     (satisfied, feedback) = await _judge.JudgeAsync(request, refinedPrompt, workflow, runResult.ResultBytes, ct);
                 }
                 catch (LlmResponseParseException ex)

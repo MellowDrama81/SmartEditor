@@ -15,6 +15,7 @@ namespace SmartEditor.App;
 public partial class App : Application
 {
     public static IServiceProvider Services { get; private set; } = null!;
+    public static Action<IServiceCollection>? ConfigurePlatformServices { get; set; }
 
     public override void Initialize()
     {
@@ -28,6 +29,7 @@ public partial class App : Application
     {
         Services = BuildServiceProvider();
         var shell = Services.GetRequiredService<ShellViewModel>();
+        _ = Services.GetRequiredService<GenerationRecoveryService>().RecoverPendingAsync();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -63,7 +65,10 @@ public partial class App : Application
         services.AddSingleton<AppSettingsStore>();
         services.AddSingleton<AssetTagsStore>();
         services.AddSingleton<AssetThumbnailCache>();
+        services.AddSingleton<GenerationRecoveryStore>();
         services.AddSingleton<IFilePickerService, AvaloniaFilePickerService>();
+        services.AddSingleton<IGenerationKeepAlive, NoOpGenerationKeepAlive>();
+        ConfigurePlatformServices?.Invoke(services);
 
         var workflowsDirectory = Path.Combine(AppContext.BaseDirectory, "Workflows");
         var guidanceDirectory = Path.Combine(AppContext.BaseDirectory, "Guidance");
@@ -84,6 +89,7 @@ public partial class App : Application
         services.AddTransient<Func<EditorViewModel>>(sp => sp.GetRequiredService<EditorViewModel>);
         // One Assets tab for the whole app, unlike editor tabs — a true singleton, not per-tab.
         services.AddSingleton<AssetsViewModel>();
+        services.AddSingleton<GenerationRecoveryService>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<ShellViewModel>();
 

@@ -10,6 +10,11 @@ namespace SmartEditor.Core.Tests;
 
 public class ComfyCloudClientTests
 {
+    private sealed class ImmediateProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
     private static WorkflowDefinition LoadWorkflow(string id) =>
         new FileWorkflowCatalog(Path.Combine(AppContext.BaseDirectory, "Workflows"))
             .GetAll().Single(w => w.Id == id);
@@ -45,6 +50,21 @@ public class ComfyCloudClientTests
         Assert.Equal(1, handler.UploadCount);
         Assert.Contains("a vivid blue photo", handler.LastPromptBody);
         Assert.Contains("secret-key", handler.ApiKeysSeen);
+    }
+
+    [Fact]
+    public async Task Reports_a_durable_job_id_when_a_cloud_run_is_submitted_and_completed()
+    {
+        var client = MakeClient(new FakeCloudServerHandler());
+        var workflow = LoadWorkflow("z-image-turbo");
+        var updates = new List<ComfyJobUpdate>();
+
+        await client.RunWorkflowAsync(workflow, new EditRequest([], "a fox"), "a fox", null, null,
+            CancellationToken.None, jobUpdates: new ImmediateProgress<ComfyJobUpdate>(updates.Add));
+
+        Assert.Equal(
+            [new ComfyJobUpdate(ComfyJobState.Queued, "cloud-job-1"),
+             new ComfyJobUpdate(ComfyJobState.Completed, "cloud-job-1")], updates);
     }
 
     [Fact]

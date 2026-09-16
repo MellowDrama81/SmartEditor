@@ -9,6 +9,11 @@ namespace SmartEditor.Core.Tests;
 
 public class ImageEditOrchestratorTests
 {
+    private sealed class ImmediateProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
     private static EditRequest MakeRequest() =>
         new([new SourceImage("in.png", TestImages.TinyPng)], "make it blue");
 
@@ -32,6 +37,49 @@ public class ImageEditOrchestratorTests
         Assert.True(session.History[0].Satisfied);
         Assert.Equal(1, comfy.CallCount);
         Assert.NotNull(session.FinalResultBytes);
+    }
+
+    [Fact]
+    public async Task Reports_when_planning_moves_into_generation_and_judging()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var events = new List<EditRunProgress>();
+
+        await MakeOrchestrator(llm, new FakeComfyUiClient()).RunAsync(
+            MakeRequest(), progress: null, CancellationToken.None,
+            runProgress: new ImmediateProgress<EditRunProgress>(events.Add));
+
+        Assert.Collection(events,
+            update => Assert.Equal(new EditRunProgress(EditRunStage.Planning, 1), update),
+            update => Assert.Equal(new EditRunProgress(EditRunStage.Generating, 1, 0), update),
+            update => Assert.Equal(new EditRunProgress(EditRunStage.Judging, 1), update));
+    }
+
+    [Fact]
+    public async Task Publishes_the_image_before_its_llm_evaluation_finishes()
+    {
+        var llm = new FakeLlmClient(
+            """{"workflowId":"wf1","refinedPrompt":"a blue photo","reasoning":"fits the ask"}""",
+            """{"satisfied":true,"feedback":"looks great"}""");
+        var updates = new List<EditIteration>();
+
+        await MakeOrchestrator(llm, new FakeComfyUiClient()).RunAsync(
+            MakeRequest(), new ImmediateProgress<EditIteration>(updates.Add), CancellationToken.None);
+
+        Assert.Collection(updates,
+            pending =>
+            {
+                Assert.NotNull(pending.ResultImageBytes);
+                Assert.Equal("Evaluating result...", pending.JudgeFeedback);
+            },
+            evaluated =>
+            {
+                Assert.NotNull(evaluated.ResultImageBytes);
+                Assert.True(evaluated.Satisfied);
+                Assert.Equal("looks great", evaluated.JudgeFeedback);
+            });
     }
 
     [Fact]

@@ -28,7 +28,9 @@ internal sealed class FakeComfyUiClient : IComfyUiClient
         string refinedPrompt,
         IReadOnlyDictionary<Guid, string>? alreadyUploaded,
         IProgress<double>? progress,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<ComfyJobState>? jobState = null,
+        IProgress<ComfyJobUpdate>? jobUpdates = null)
     {
         CallCount++;
         ReceivedUploadMaps.Add(alreadyUploaded);
@@ -67,4 +69,7 @@ internal sealed class FakeComfyUiClient : IComfyUiClient
         Assets.Add(new AssetInfo(name, fileName));
         return Task.FromResult(name);
     }
+
+    public Task<ComfyRunResult> RecoverWorkflowAsync(string jobId, CancellationToken ct) =>
+        throw new NotSupportedException();
 }

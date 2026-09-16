@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using SmartEditor.Core.Abstractions;
 using SmartEditor.Core.Configuration;
+using SmartEditor.Core.Models;
 
 namespace SmartEditor.Core.Services;
 
@@ -79,7 +80,8 @@ public sealed class ComfyUiClient : ComfyUiClientBase
         return promptId;
     }
 
-    protected override async Task<JsonNode> WaitForCompletionAsync(string promptId, CancellationToken ct)
+    protected override async Task<JsonNode> WaitForCompletionAsync(
+        string promptId, IProgress<ComfyJobState>? jobState, IProgress<ComfyJobUpdate>? jobUpdates, CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + MaxWait;
 
