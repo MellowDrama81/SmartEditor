@@ -1,3 +1,4 @@
+using System;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -6,7 +7,7 @@ using AndroidX.Core.App;
 
 namespace SmartEditor.App.Android;
 
-[Service(Exported = false, ForegroundServiceType = Android.Content.PM.ForegroundService.TypeDataSync)]
+[Service(Exported = false, ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeDataSync)]
 public sealed class GenerationForegroundService : Service
 {
     private const string ChannelId = "generation";
@@ -18,17 +19,29 @@ public sealed class GenerationForegroundService : Service
 
     public override IBinder? OnBind(Intent? intent) => null;
 
+    /// <summary>
+    /// Android 15+ grants only a bounded background runtime to <c>dataSync</c> foreground
+    /// services. Stop inside the short grace period rather than letting the platform terminate the
+    /// app with a foreground-service timeout exception. The Cloud job itself is durable and is
+    /// reconciled through the recovery journal on the next launch.
+    /// </summary>
+    public override void OnTimeout(int startId, ForegroundService fgsType)
+    {
+        StopForegroundCompat();
+        StopSelf(startId);
+    }
+
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
         switch (intent?.Action)
         {
             case StopAction:
-                StopForeground(StopForegroundFlags.Remove);
+                StopForegroundCompat();
                 StopSelf();
                 break;
             case StartAction:
                 var notification = CreateNotification(intent.GetStringExtra(StatusExtra));
-                if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+                if (OperatingSystem.IsAndroidVersionAtLeast(29))
                 {
                     StartForeground(NotificationId, notification, ForegroundService.TypeDataSync);
                 }
@@ -38,7 +51,7 @@ public sealed class GenerationForegroundService : Service
                 }
                 break;
             case UpdateAction:
-                NotificationManagerCompat.From(this).Notify(NotificationId, CreateNotification(intent.GetStringExtra(StatusExtra)));
+                NotificationManagerCompat.From(this)!.Notify(NotificationId, CreateNotification(intent!.GetStringExtra(StatusExtra)));
                 break;
         }
 
@@ -53,26 +66,56 @@ public sealed class GenerationForegroundService : Service
     {
         var intent = new Intent(context, typeof(GenerationForegroundService))!.SetAction(action);
         if (status is not null) intent.PutExtra(StatusExtra, status);
-        if (foreground) context.StartForegroundService(intent); else context.StartService(intent);
+        if (foreground)
+        {
+            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+            {
+                context.StartForegroundService(intent);
+            }
+            else
+            {
+                context.StartService(intent);
+            }
+        }
+        else
+        {
+            context.StartService(intent);
+        }
+    }
+
+    private void StopForegroundCompat()
+    {
+        if (OperatingSystem.IsAndroidVersionAtLeast(24))
+        {
+            StopForeground(StopForegroundFlags.Remove);
+        }
+        else
+        {
+#pragma warning disable CS0618 // deprecated bool overload is the only option below API 24
+            StopForeground(true);
+#pragma warning restore CS0618
+        }
     }
 
     private Notification CreateNotification(string? status)
     {
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+        if (OperatingSystem.IsAndroidVersionAtLeast(26))
         {
             var channel = new NotificationChannel(ChannelId, "Image generation", NotificationImportance.Low)
             {
                 Description = "Keeps an active image generation running in the background.",
             };
-            GetSystemService(NotificationService)!.CreateNotificationChannel(channel);
+            var notificationManager = GetSystemService(global::Android.Content.Context.NotificationService)
+                as global::Android.App.NotificationManager;
+            notificationManager?.CreateNotificationChannel(channel);
         }
 
-        return new NotificationCompat.Builder(this, ChannelId)
-            .SetSmallIcon(Resource.Drawable.smarteditor)
-            .SetContentTitle("SmartEditor is generating an image")
-            .SetContentText(status ?? "Generating image...")
-            .SetOngoing(true)
-            .SetOnlyAlertOnce(true)
-            .Build();
+        var builder = new NotificationCompat.Builder(this, ChannelId);
+        builder.SetSmallIcon(Resource.Drawable.smarteditor);
+        builder.SetContentTitle("SmartEditor is generating an image");
+        builder.SetContentText(status ?? "Generating image...");
+        builder.SetOngoing(true);
+        builder.SetOnlyAlertOnce(true);
+        return builder.Build()!;
     }
 }
