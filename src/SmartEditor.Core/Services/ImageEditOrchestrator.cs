@@ -112,7 +112,8 @@ public sealed class ImageEditOrchestrator : IImageEditOrchestrator
                         : new Progress<ComfyJobState>(state => runProgress.Report(new EditRunProgress(
                             state == ComfyJobState.Queued ? EditRunStage.Queued : EditRunStage.Generating, i)));
                     runResult = await _comfy.RunWorkflowAsync(
-                        workflow, runRequest, refinedPrompt, uploadedImages, comfyProgress, ct, comfyJobState, jobUpdates);
+                        workflow, runRequest, refinedPrompt, uploadedImages, comfyProgress, ct, comfyJobState,
+                        _comfy.SupportsJobRecovery ? jobUpdates : null);
                 }
                 catch (ComfyWorkflowException ex)
                 {

@@ -15,6 +15,7 @@ namespace SmartEditor.Core.Services;
 /// mask-baking logic is identical for both.</summary>
 public abstract partial class ComfyUiClientBase : IComfyUiClient
 {
+    public virtual bool SupportsJobRecovery => false;
     private const string PromptToken = "{{PROMPT:string}}";
     private const string SeedToken = "{{SEED:seed}}";
     private const string MaskedImageToken = "{{UPLOADED_MASKED_IMAGE_FILENAME:image}}";
@@ -96,12 +97,9 @@ public abstract partial class ComfyUiClientBase : IComfyUiClient
             jobUpdates?.Report(new ComfyJobUpdate(ComfyJobState.Completed, promptId));
             return new ComfyRunResult(bytes, uploaded, outputRef);
         }
-        catch
+        catch (ComfyWorkflowException ex) when (promptId is not null && ex.IsTerminal)
         {
-            if (promptId is not null)
-            {
-                jobUpdates?.Report(new ComfyJobUpdate(ComfyJobState.Failed, promptId));
-            }
+            jobUpdates?.Report(new ComfyJobUpdate(ComfyJobState.Failed, promptId));
             throw;
         }
         finally

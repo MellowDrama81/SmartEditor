@@ -120,6 +120,7 @@ public partial class AssetsViewModel : TabViewModelBase
         _filePicker = filePicker;
         _tagsStore = tagsStore;
         _thumbnailCache = thumbnailCache;
+        _tagsStore.SaveFailed += message => StatusMessage = message;
     }
 
     partial void OnTagFilterChanged(string value) => ApplyFilter();
@@ -148,6 +149,8 @@ public partial class AssetsViewModel : TabViewModelBase
 
         if (reset)
         {
+            CloseImageViewer();
+            foreach (var item in Assets) item.DisposeImages();
             Assets.Clear();
             FilteredAssets.Clear();
             OnPropertyChanged(nameof(HasAssets));
@@ -312,7 +315,7 @@ public partial class AssetsViewModel : TabViewModelBase
     /// itself (<see cref="EditIteration.ResultOutputFilename"/>) &mdash; recorded so a later listing
     /// refresh can recognize Comfy's native copy of this same result as a duplicate of the reupload
     /// below and collapse the two into one row instead of showing both.</param>
-    public async Task AddGeneratedResultAsync(byte[] bytes, string displayName, string? outputFilename)
+    public async Task<bool> AddGeneratedResultAsync(byte[] bytes, string displayName, string? outputFilename)
     {
         try
         {
@@ -325,10 +328,12 @@ public partial class AssetsViewModel : TabViewModelBase
             }
 
             InsertAtFront(name, displayName, bytes);
+            return true;
         }
         catch (Exception ex)
         {
             StatusMessage = $"Could not add the generated result to the asset library: {ex.Message}";
+            return false;
         }
     }
 

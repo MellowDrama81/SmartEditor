@@ -60,7 +60,6 @@ public sealed class AppSettingsStore
     public AppSettingsStore()
     {
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SmartEditor");
-        Directory.CreateDirectory(directory);
         _filePath = Path.Combine(directory, "settings.json");
         Current = Load();
     }
@@ -76,15 +75,21 @@ public sealed class AppSettingsStore
         {
             return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(_filePath), JsonOptions) ?? new AppSettings();
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
             return new AppSettings();
         }
     }
 
-    public void Save(AppSettings settings)
+    /// <summary>Persists settings and only publishes them to the running app after the write succeeds.</summary>
+    public bool Save(AppSettings settings)
     {
+        if (!AtomicFile.TryWriteAllText(_filePath, JsonSerializer.Serialize(settings, JsonOptions)))
+        {
+            return false;
+        }
+
         Current = settings;
-        File.WriteAllText(_filePath, JsonSerializer.Serialize(settings, JsonOptions));
+        return true;
     }
 }

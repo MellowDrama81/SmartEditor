@@ -4,14 +4,14 @@ namespace SmartEditor.App.Services;
 /// platform supports it. Desktop uses the no-op implementation.</summary>
 public interface IGenerationKeepAlive
 {
-    void Start(string status);
-    void Update(string status);
-    void Stop();
+    Guid Start(string status);
+    void Update(Guid operationId, string status);
+    void Stop(Guid operationId);
 }
 
 public sealed class NoOpGenerationKeepAlive : IGenerationKeepAlive
 {
-    public void Start(string status) { }
-    public void Update(string status) { }
-    public void Stop() { }
+    public Guid Start(string status) => Guid.NewGuid();
+    public void Update(Guid operationId, string status) { }
+    public void Stop(Guid operationId) { }
 }

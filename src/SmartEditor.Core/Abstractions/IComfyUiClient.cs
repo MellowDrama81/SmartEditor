@@ -6,8 +6,10 @@ namespace SmartEditor.Core.Abstractions;
 /// execution error. This indicates a workflow/binding bug, not a "the LLM should try again" case.</summary>
 public sealed class ComfyWorkflowException : Exception
 {
-    public ComfyWorkflowException(string message) : base(message) { }
-    public ComfyWorkflowException(string message, Exception inner) : base(message, inner) { }
+    public bool IsTerminal { get; }
+
+    public ComfyWorkflowException(string message, bool isTerminal = false) : base(message) => IsTerminal = isTerminal;
+    public ComfyWorkflowException(string message, Exception inner, bool isTerminal = false) : base(message, inner) => IsTerminal = isTerminal;
 }
 
 /// <param name="OutputFilename">The result image's own storage identity on the backend (as
@@ -31,6 +33,9 @@ public sealed record AssetPage(IReadOnlyList<AssetInfo> Assets, string? NextCurs
 /// into it, waits for completion, and fetches the resulting image.</summary>
 public interface IComfyUiClient
 {
+    /// <summary>Whether this backend exposes durable job IDs that can be reconciled after the app
+    /// process restarts. Currently only Comfy Cloud supports this.</summary>
+    bool SupportsJobRecovery { get; }
     /// <param name="alreadyUploaded">Source-image-id &#8594; server-side filename map from a prior
     /// iteration in the same session, so unchanged source images aren't re-uploaded.</param>
     /// <param name="progress">Optional 0.0-1.0 progress reporter (best-effort, via ComfyUI's

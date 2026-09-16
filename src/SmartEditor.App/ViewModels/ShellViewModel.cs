@@ -79,6 +79,11 @@ public partial class ShellViewModel : ViewModelBase
             return;
         }
 
+        if (tab is EditorViewModel editor)
+        {
+            editor.CancelRun();
+        }
+
         Tabs.RemoveAt(index);
 
         if (Tabs.Count == 0)
@@ -100,7 +105,11 @@ public partial class ShellViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveSettingsAsync()
     {
-        await Settings.SaveAsync();
+        if (!await Settings.SaveAsync())
+        {
+            return;
+        }
+
         IsSettingsOpen = false;
         // Newly adding (or removing) an LLM configuration changes whether "let the LLM decide" and
         // prompt refinement are even offered (see EditorViewModel.IsLlmConfigured) — refresh every

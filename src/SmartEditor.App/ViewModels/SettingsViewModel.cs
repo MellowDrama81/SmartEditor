@@ -53,6 +53,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial int FullImageCacheLimit { get; set; }
 
+    [ObservableProperty]
+    public partial string StatusMessage { get; set; } = "";
+
     public string CleartextWarning =>
         IsCleartext(ComfyUiBaseUrl) || IsCleartext(LlmBaseUrl)
             ? "One or more URLs use plain http:// — on Android this requires allowing cleartext traffic, which this app permits by default since these hosts are set at runtime."
@@ -95,9 +98,9 @@ public partial class SettingsViewModel : ViewModelBase
     private static bool IsCleartext(string url) => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
 
     [RelayCommand]
-    public async Task SaveAsync()
+    public async Task<bool> SaveAsync()
     {
-        _store.Save(new AppSettings
+        var settings = new AppSettings
         {
             ComfyUiBackend = IsComfyCloud ? ComfyUiBackend.Cloud : ComfyUiBackend.SelfHosted,
             ComfyUiBaseUrl = ComfyUiBaseUrl,
@@ -110,7 +113,15 @@ public partial class SettingsViewModel : ViewModelBase
             AssetPageSize = Math.Clamp(AssetPageSize, 1, 500),
             ThumbnailCacheLimit = Math.Clamp(ThumbnailCacheLimit, 0, 1_000),
             FullImageCacheLimit = Math.Clamp(FullImageCacheLimit, 0, 1_000),
-        });
+        };
+        if (!_store.Save(settings))
+        {
+            StatusMessage = "Could not save settings. Check available storage and try again.";
+            return false;
+        }
+
         await _imageCache.ApplyLimitsAsync();
+        StatusMessage = "";
+        return true;
     }
 }

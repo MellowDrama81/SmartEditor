@@ -20,6 +20,7 @@ namespace SmartEditor.Core.Services;
 /// caller can still report that generation has started as soon as the job is submitted.</summary>
 public sealed class ComfyCloudClient : ComfyUiClientBase
 {
+    public override bool SupportsJobRecovery => true;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaxWait = TimeSpan.FromMinutes(15);
 
@@ -130,36 +131,45 @@ public sealed class ComfyCloudClient : ComfyUiClientBase
                 ApplyAuth(request);
                 using var response = await _http.SendAsync(request, ct);
 
-                if (response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
                 {
-                    var responseText = await response.Content.ReadAsStringAsync(ct);
-                    var root = JsonNode.Parse(responseText);
-                    var status = root?["status"]?.GetValue<string>();
+                    var error = await response.Content.ReadAsStringAsync(ct);
+                    // An absent job is permanent. Authentication/configuration failures are not a
+                    // job outcome, so callers retain the recovery record and can retry after the
+                    // user fixes credentials. Server errors are similarly left retryable.
+                    var isTerminal = response.StatusCode == HttpStatusCode.NotFound;
+                    throw new ComfyWorkflowException(
+                        $"Could not read Comfy Cloud job '{promptId}' ({(int)response.StatusCode}): {error}", isTerminal);
+                }
 
-                    ComfyJobState? observedState = status switch
-                    {
-                        "waiting_to_dispatch" or "pending" => ComfyJobState.Queued,
-                        "in_progress" => ComfyJobState.Generating,
-                        _ => null,
-                    };
-                    if (observedState is { } state && state != lastReportedState)
-                    {
-                        jobState?.Report(state);
-                        jobUpdates?.Report(new ComfyJobUpdate(state, promptId));
-                        lastReportedState = state;
-                    }
+                var responseText = await response.Content.ReadAsStringAsync(ct);
+                var root = JsonNode.Parse(responseText);
+                var status = root?["status"]?.GetValue<string>();
 
-                    switch (status)
-                    {
-                        case "success" or "completed":
-                            if (root?["outputs"] is JsonNode outputs)
-                            {
-                                return outputs;
-                            }
-                            throw new ComfyWorkflowException($"Comfy Cloud job '{promptId}' completed but reported no outputs.");
-                        case "error" or "non_retryable_error" or "lost" or "cancelled":
-                            throw new ComfyWorkflowException($"Comfy Cloud reported job '{promptId}' as '{status}'.");
-                    }
+                ComfyJobState? observedState = status switch
+                {
+                    "waiting_to_dispatch" or "pending" => ComfyJobState.Queued,
+                    "in_progress" => ComfyJobState.Generating,
+                    _ => null,
+                };
+                if (observedState is { } state && state != lastReportedState)
+                {
+                    jobState?.Report(state);
+                    jobUpdates?.Report(new ComfyJobUpdate(state, promptId));
+                    lastReportedState = state;
+                }
+
+                switch (status)
+                {
+                    case "success" or "completed":
+                        if (root?["outputs"] is JsonNode outputs)
+                        {
+                            return outputs;
+                        }
+                        throw new ComfyWorkflowException(
+                            $"Comfy Cloud job '{promptId}' completed but reported no outputs.", isTerminal: true);
+                    case "error" or "non_retryable_error" or "lost" or "cancelled":
+                        throw new ComfyWorkflowException($"Comfy Cloud reported job '{promptId}' as '{status}'.", isTerminal: true);
                 }
             }
             // A transient network hiccup mid-poll (e.g. a dropped connection) shouldn't abort an

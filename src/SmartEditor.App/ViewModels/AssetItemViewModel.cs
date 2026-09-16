@@ -56,6 +56,8 @@ public partial class AssetItemViewModel : ViewModelBase
 
     public void SetThumbnailBytes(byte[] bytes)
     {
+        Thumbnail?.Dispose();
+        Thumbnail = null;
         try
         {
             using var stream = new MemoryStream(bytes);
@@ -90,5 +92,12 @@ public partial class AssetItemViewModel : ViewModelBase
     {
         FullImage?.Dispose();
         FullImage = null;
+    }
+
+    public void DisposeImages()
+    {
+        Thumbnail?.Dispose();
+        Thumbnail = null;
+        ClearFullImage();
     }
 }

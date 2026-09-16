@@ -21,6 +21,7 @@ public partial class EditorViewModel : TabViewModelBase
 
     private CancellationTokenSource? _runCts;
     private byte[]? _finalResultBytes;
+    private Guid? _keepAliveOperationId;
 
     /// <summary>Source-image id &#8594; Comfy filename, for images already known to be sitting on
     /// the backend (uploaded immediately after being picked locally, or added straight from the
@@ -330,7 +331,7 @@ public partial class EditorViewModel : TabViewModelBase
         FinalResult = null;
         _finalResultBytes = null;
         StatusMessage = WillUseLlm ? "Planning..." : "Generating...";
-        _generationKeepAlive.Start(StatusMessage);
+        _keepAliveOperationId = _generationKeepAlive.Start(StatusMessage);
         _runCts = new CancellationTokenSource();
 
         try
@@ -359,7 +360,8 @@ public partial class EditorViewModel : TabViewModelBase
         }
         finally
         {
-            _generationKeepAlive.Stop();
+            if (_keepAliveOperationId is { } operationId) _generationKeepAlive.Stop(operationId);
+            _keepAliveOperationId = null;
             IsRunning = false;
             _runCts?.Dispose();
             _runCts = null;
@@ -396,7 +398,7 @@ public partial class EditorViewModel : TabViewModelBase
                 : iteration.Satisfied
                     ? $"Iteration {iteration.Index}: satisfied."
                     : $"Iteration {iteration.Index}: not satisfied — {iteration.JudgeFeedback}";
-            _generationKeepAlive.Update(StatusMessage);
+            UpdateKeepAliveStatus();
         });
 
         var runProgress = new Progress<EditRunProgress>(update =>
@@ -411,10 +413,10 @@ public partial class EditorViewModel : TabViewModelBase
                 EditRunStage.Judging => $"Reviewing image {update.Iteration}...",
                 _ => StatusMessage,
             };
-            _generationKeepAlive.Update(StatusMessage);
+            UpdateKeepAliveStatus();
         });
 
-        var jobUpdates = new Progress<ComfyJobUpdate>(update => _ = _generationRecovery.TrackAsync(update));
+        var jobUpdates = new SynchronousProgress<ComfyJobUpdate>(_generationRecovery.Track);
 
         var session = await orchestrator.RunAsync(
             request, progress, ct, _uploadedAssetNames, SelectedWorkflowOption?.Workflow, runProgress, jobUpdates);
@@ -446,6 +448,9 @@ public partial class EditorViewModel : TabViewModelBase
         var workflow = SelectedWorkflowOption?.Workflow
                        ?? throw new InvalidOperationException("No workflow is selected.");
         var comfy = _sessionFactory.CreateComfyClient();
+        var jobUpdates = comfy.SupportsJobRecovery
+            ? new SynchronousProgress<ComfyJobUpdate>(_generationRecovery.Track)
+            : null;
         IReadOnlyDictionary<Guid, string>? uploadedImages = _uploadedAssetNames;
         var runCount = Math.Clamp(MaxIterations, 1, OrchestratorOptions.HardMaxIterations);
 
@@ -453,7 +458,7 @@ public partial class EditorViewModel : TabViewModelBase
         {
             ct.ThrowIfCancellationRequested();
             StatusMessage = $"Generating {i}/{runCount}...";
-            _generationKeepAlive.Update(StatusMessage);
+            UpdateKeepAliveStatus();
 
             ComfyRunResult runResult;
             try
@@ -463,7 +468,8 @@ public partial class EditorViewModel : TabViewModelBase
                     throw new InvalidOperationException("Workflow is disabled or deleted.");
                 }
 
-                runResult = await comfy.RunWorkflowAsync(workflow, request, Prompt, uploadedImages, null, ct);
+                runResult = await comfy.RunWorkflowAsync(
+                    workflow, request, Prompt, uploadedImages, null, ct, jobUpdates: jobUpdates);
             }
             // Caught here (rather than left to RunAsync's generic catch) so a failure partway
             // through a multi-run batch reports accurately instead of "Could not start" — the
@@ -503,8 +509,15 @@ public partial class EditorViewModel : TabViewModelBase
         StatusMessage = runCount == 1 ? "Done — 1 result." : $"Done — {runCount} results (see history below).";
     }
 
+    public void CancelRun() => _runCts?.Cancel();
+
+    private void UpdateKeepAliveStatus()
+    {
+        if (_keepAliveOperationId is { } operationId) _generationKeepAlive.Update(operationId, StatusMessage);
+    }
+
     [RelayCommand]
-    private void Cancel() => _runCts?.Cancel();
+    private void Cancel() => CancelRun();
 
     [RelayCommand]
     private void ViewIteration(IterationDisplayViewModel iteration)

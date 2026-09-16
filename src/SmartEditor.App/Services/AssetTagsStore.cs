@@ -12,10 +12,12 @@ public sealed class AssetTagsStore
     private readonly string _filePath;
     private readonly Dictionary<string, List<string>> _tagsByFilename;
 
+    /// <summary>Raised when an edit is retained for this session but could not be made durable.</summary>
+    public event Action<string>? SaveFailed;
+
     public AssetTagsStore()
     {
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SmartEditor");
-        Directory.CreateDirectory(directory);
         _filePath = Path.Combine(directory, "asset-tags.json");
         _tagsByFilename = Load();
     }
@@ -32,7 +34,7 @@ public sealed class AssetTagsStore
             return JsonSerializer.Deserialize<Dictionary<string, List<string>>>(File.ReadAllText(_filePath), JsonOptions)
                    ?? [];
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
             return [];
         }
@@ -52,6 +54,9 @@ public sealed class AssetTagsStore
             _tagsByFilename[filename] = [.. tags];
         }
 
-        File.WriteAllText(_filePath, JsonSerializer.Serialize(_tagsByFilename, JsonOptions));
+        if (!AtomicFile.TryWriteAllText(_filePath, JsonSerializer.Serialize(_tagsByFilename, JsonOptions)))
+        {
+            SaveFailed?.Invoke("Could not save asset tags. Check available storage and try again.");
+        }
     }
 }

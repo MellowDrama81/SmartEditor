@@ -130,6 +130,7 @@
 
           <TextBlock Text="{Binding CleartextWarning}" Foreground="OrangeRed" TextWrapping="Wrap"
                      IsVisible="{Binding HasCleartextWarning}" Margin="0,8,0,0" />
+          <TextBlock Text="{Binding StatusMessage}" Foreground="OrangeRed" TextWrapping="Wrap" Margin="0,8,0,0" />
 
             </StackPanel>
           </ScrollViewer>

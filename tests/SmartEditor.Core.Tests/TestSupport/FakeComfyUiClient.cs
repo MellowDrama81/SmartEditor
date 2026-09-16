@@ -5,6 +5,7 @@ namespace SmartEditor.Core.Tests.TestSupport;
 
 internal sealed class FakeComfyUiClient : IComfyUiClient
 {
+    public bool SupportsJobRecovery => false;
     private readonly Func<int, byte[]> _resultFactory;
 
     public int CallCount { get; private set; }

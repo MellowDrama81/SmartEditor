@@ -68,6 +68,26 @@ public class ComfyCloudClientTests
     }
 
     [Fact]
+    public async Task Does_not_report_a_submitted_cloud_job_as_failed_when_local_waiting_is_cancelled()
+    {
+        var handler = new FakeCloudServerHandler { JobStatus = "pending" };
+        var client = MakeClient(handler);
+        var updates = new List<ComfyJobUpdate>();
+        using var cts = new CancellationTokenSource();
+        var updateProgress = new ImmediateProgress<ComfyJobUpdate>(update =>
+        {
+            updates.Add(update);
+            if (update.State == ComfyJobState.Queued) cts.Cancel();
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.RunWorkflowAsync(
+            LoadWorkflow("z-image-turbo"), new EditRequest([], "a fox"), "a fox", null, null, cts.Token,
+            jobUpdates: updateProgress));
+
+        Assert.Equal([new ComfyJobUpdate(ComfyJobState.Queued, "cloud-job-1")], updates);
+    }
+
+    [Fact]
     public async Task Does_not_forward_the_api_key_to_the_redirected_third_party_host()
     {
         var handler = new FakeCloudServerHandler();
